@@ -15,6 +15,7 @@
 ntp_time_t        ntp_sec = 3461476149U; // 2009-09-09 09:09:09 (GMT)
 uint8_t       ntp_hsec;
  int8_t       ntp_gmtoff;
+uint8_t       ntp_synced;               // an answer came since the start
 struct uip_udp_conn *ntp_conn = 0;
 
 ////////////////////////////////
@@ -75,6 +76,7 @@ ntp_digestpacket()
   f[2] = p->tx_ts.u8[1];
   f[3] = p->tx_ts.u8[0];
   ntp_hsec = (uint16_t)(p->tx_ts.u8[4]*125)/256;
+  ntp_synced = 1;
   if(eth_debug) {
     DC('n'); DC('r'); ntp_func(0);
   }

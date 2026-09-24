@@ -37,6 +37,9 @@
 #include "sha256.h"
 #include "version.h"
 #include "httpd.h"
+#ifdef HAS_NTP
+#include "ntp.h"
+#endif
 #ifdef HTTPD_RESET_PIN
 #include "led.h"
 #endif
@@ -205,6 +208,40 @@ out_field(const char *label, char name, uint8_t *ee_ip)
     out_ip(ee_ip);
 }
 
+#ifdef HAS_NTP
+static void
+out_2(uint8_t v)
+{
+  if(v < 10)
+    out("0");
+  out_u(v);
+}
+
+/* The time from NTP in the time zone set (whole hours, no daylight saving
+   time), as ntp_sec2tm() computes it for the log. */
+static void
+out_time(void)
+{
+  out("<p class=\"i\">Time: ");
+  if(!ntp_synced) {
+    out("no answer from the NTP server yet");
+  } else {
+    tm_t t;
+    ntp_sec2tm(ntp_sec, &t);
+    out("20");      out_2(t.tm_year);
+    out("-");       out_2(t.tm_mon);
+    out("-");       out_2(t.tm_mday);
+    out(" ");       out_2(t.tm_hour);
+    out(":");       out_2(t.tm_min);
+    out(":");       out_2(t.tm_sec);
+    out(ntp_gmtoff < 0 ? " (UTC-" : " (UTC+");
+    out_u(ntp_gmtoff < 0 ? -ntp_gmtoff : ntp_gmtoff);
+    out(")");
+  }
+  out("</p>");
+}
+#endif
+
 #ifdef USE_RF_MODE
 #ifdef HAS_MULTI_CC
 #define RADIO_COUNT HAS_MULTI_CC
@@ -369,6 +406,9 @@ page_config(const char *error)
     out_u(off);
   }
   out("\">");
+#ifdef HAS_NTP
+  out_time();
+#endif
 #ifdef HAS_IP_FILTER
   ipfilter_entry e[IPFILTER_MAX];
   uint8_t n = ipfilter_get(e);

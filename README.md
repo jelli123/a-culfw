@@ -135,7 +135,10 @@ The CUBe firmware serves a configuration page on port 80
 (`culfw/clib/httpd.c`, enabled by `HAS_HTTPD` in its `board.h`): DHCP, IP
 address, netmask, gateway, NTP server, the TCP port for the CUL protocol and
 the time zone - the settings the `Wi*` commands write. Saving validates the
-whole form first, then stores it and restarts the device.
+whole form first, then stores it and restarts the device. The page also shows
+the time from the NTP server in that time zone (whole hours, no daylight saving
+time); until the first answer the CUBe asks every 8 seconds, then every 4.5
+minutes.
 
 The page can be protected with a password (HTTP Basic authentication, user
 `admin`), set on the page itself. The EEPROM keeps only a salted SHA-256 hash;

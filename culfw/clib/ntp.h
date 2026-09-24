@@ -54,6 +54,7 @@ ntp_time_t ntp_tm2sec(tm_t *t);
 extern ntp_time_t   ntp_sec;
 extern uint8_t  ntp_hsec;
 extern  int8_t  ntp_gmtoff;
+extern uint8_t  ntp_synced;
 extern struct uip_udp_conn *ntp_conn;
 
 #define NTP_PORT 123

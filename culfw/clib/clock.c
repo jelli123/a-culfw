@@ -257,7 +257,9 @@ Minute_Task(void)
 #endif
 
 #ifdef HAS_NTP
-  if((ntp_sec & NTP_INTERVAL_MASK) == 0)
+  // every 4.5 minutes; every 8 s until the first answer, as the first
+  // request usually only resolves the server's MAC address (ARP)
+  if((ntp_sec & (ntp_synced ? NTP_INTERVAL_MASK : 7)) == 0)
     ntp_sendpacket();
 #endif
 
