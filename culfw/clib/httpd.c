@@ -14,8 +14,11 @@
  * user "admin". The EEPROM keeps only a salted SHA-256 hash: any EEPROM
  * byte can be read with the R command over USB or the TCP port. Five wrong
  * passwords in a row lock the page for 30 seconds. Holding the button
- * (HTTPD_RESET_PIN) for 10 seconds while running removes the password, as
- * does the e factory reset.
+ * (HTTPD_RESET_PIN) for 10 seconds while running removes the password and
+ * the IP whitelist, as does the e factory reset.
+ *
+ * With HAS_IP_FILTER the page also edits the whitelist (clib/ipfilter.c).
+ * A list that would shut out the computer saving it is refused.
  *
  * This protects the page, not the device: the TCP port takes every command,
  * W included, without a password, and HTTP carries the password in clear.
@@ -36,6 +39,9 @@
 #include "httpd.h"
 #ifdef HTTPD_RESET_PIN
 #include "led.h"
+#endif
+#ifdef HAS_IP_FILTER
+#include "ipfilter.h"
 #endif
 
 #define RX_SIZE       1024            // request line, headers and body
@@ -107,6 +113,16 @@ out_ip(uint8_t *ee)
     if(i)
       out(".");
     out_u(erb(ee + i));
+  }
+}
+
+static void
+out_ip_bytes(const uint8_t *ip)
+{
+  for(uint8_t i = 0; i < 4; i++) {
+    if(i)
+      out(".");
+    out_u(ip[i]);
   }
 }
 
@@ -207,7 +223,28 @@ page_config(const char *error)
   } else {
     out_u(off);
   }
-  out("\"><h2>Password for this page</h2>");
+  out("\">");
+#ifdef HAS_IP_FILTER
+  ipfilter_entry e[IPFILTER_MAX];
+  uint8_t n = ipfilter_get(e);
+  out("<h2>Allowed clients</h2><label for=\"f\">Addresses or networks "
+      "(192.168.1.0/24, 10.0.0.5), at most 4. Others get no answer at all, "
+      "on any port. Empty: everyone.</label>"
+      "<input type=\"text\" id=\"f\" name=\"f\" value=\"");
+  for(uint8_t i = 0; i < n; i++) {
+    if(i)
+      out(", ");
+    out_ip_bytes(e[i].ip);
+    if(e[i].prefix != 32) {
+      out("/");
+      out_u(e[i].prefix);
+    }
+  }
+  out("\"><p class=\"i\">This computer: ");
+  out_ip_bytes((const uint8_t *)uip_conn->ripaddr);
+  out("</p>");
+#endif
+  out("<h2>Password for this page</h2>");
   if(erb(EE_HTTPD_AUTH) == AUTH_SET)
     out("<p class=\"i\">User name: " AUTH_USER ". Holding the button on the "
         "bottom for 10 seconds removes the password.</p>"
@@ -601,6 +638,23 @@ save(const char *body, uint8_t *dhcp, uint8_t a[4])
   if(pw_len != pw2_len || memcmp(pw, pw2, pw_len))
     return "The two passwords differ.";
 
+#ifdef HAS_IP_FILTER
+  // a request without the field leaves the list alone
+  ipfilter_entry fl[IPFILTER_MAX];
+  int8_t fl_n = 0;
+  const char *fv = field(body, 'f', &len);
+  if(fv) {
+    char fs[100];
+    int16_t fs_len = url_decode(fv, len, fs, sizeof(fs));
+    fl_n = fs_len < 0 ? -1 : ipfilter_parse(fs, fs_len, fl);
+    if(fl_n < 0)
+      return "Invalid list of allowed clients (at most 4, like "
+             "192.168.1.0/24).";
+    if(!ipfilter_match(fl, fl_n, (const uint8_t *)uip_conn->ripaddr))
+      return "The allowed clients do not include this computer.";
+  }
+#endif
+
   // an unchecked checkbox is not sent at all
   v = field(body, 'x', &len);
   uint8_t remove_pw = v && len == 1 && v[0] == '1';
@@ -612,6 +666,10 @@ save(const char *body, uint8_t *dhcp, uint8_t a[4])
     auth_store(pw, pw_len);
   else if(remove_pw)
     ewb(EE_HTTPD_AUTH, 0);
+#ifdef HAS_IP_FILTER
+  if(fv)
+    ipfilter_store(fl, fl_n);
+#endif
   memset(pw, 0, sizeof(pw));
   memset(pw2, 0, sizeof(pw2));
 
@@ -771,8 +829,8 @@ httpd_appcall(void)
 }
 
 #ifdef HTTPD_RESET_PIN
-/* Held for RESET_HOLD calls, the button removes the password; the LED
-   then blinks fast for a few seconds. */
+/* Held for RESET_HOLD calls, the button removes the password and the IP
+   whitelist; the LED then blinks fast for a few seconds. */
 static void
 reset_button(void)
 {
@@ -798,6 +856,9 @@ reset_button(void)
   if(held < RESET_HOLD && ++held == RESET_HOLD) {
     ewb(EE_HTTPD_AUTH, 0);
     auth_fails = 0;
+#ifdef HAS_IP_FILTER
+    ipfilter_clear();
+#endif
     blink = RESET_BLINK;
   }
 }

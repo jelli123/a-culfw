@@ -105,6 +105,14 @@ void do_wdt_enable(uint8_t t);
 # define EE_HTTPD_AUTH_SIZE   25
 #endif
 
+#ifdef HAS_IP_FILTER            // marker, 4 x (address, prefix length)
+# ifndef HAS_HTTPD
+#  error "HAS_IP_FILTER is placed behind EE_HTTPD_AUTH"
+# endif
+# define EE_IP_FILTER         (EE_HTTPD_AUTH+EE_HTTPD_AUTH_SIZE)
+# define EE_IP_FILTER_SIZE    21
+#endif
+
 
 
 extern uint8_t led_mode;

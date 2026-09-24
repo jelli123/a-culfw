@@ -964,6 +964,16 @@ ip_check_end:
   }
 #endif /* UIP_CONF_IPV6 */
 
+#ifdef UIP_CONF_IP_FILTER
+  /* TCP and ICMP only from allowed senders, dropped without an answer.
+     UDP reaches our own connections only (DHCP, NTP); filtering it would
+     cut those off whenever their server is not on the list. */
+  if(BUF->proto != UIP_PROTO_UDP && !uip_ip_allowed(BUF->srcipaddr)) {
+    UIP_STAT(++uip_stat.ip.drop);
+    goto drop;
+  }
+#endif /* UIP_CONF_IP_FILTER */
+
   if(BUF->proto == UIP_PROTO_TCP) { /* Check for TCP packet. If so,
 				       proceed with TCP input
 				       processing. */

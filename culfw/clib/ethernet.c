@@ -13,6 +13,9 @@
 #ifdef HAS_HTTPD
 #include "httpd.h"
 #endif
+#ifdef HAS_IP_FILTER
+#include "ipfilter.h"
+#endif
 #include "led.h"
 #include "mdns_sd.h"
 #include "ntp.h"
@@ -63,6 +66,9 @@ ethernet_init(void)
 
   uip_setethaddr(mac);
   uip_init();
+#ifdef HAS_IP_FILTER
+  ipfilter_load();
+#endif
   ntp_conn = 0;
 
   // setup two periodic timers

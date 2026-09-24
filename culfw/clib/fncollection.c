@@ -37,6 +37,9 @@
 #endif
 
 #include "ethernet.h"                   // for ethernet_reset
+#ifdef HAS_IP_FILTER
+#include "ipfilter.h"                   // for ipfilter_read, ipfilter_write
+#endif
 #include "fswrapper.h"                  // for fs
 #include "mysleep.h"                    // for sleep_time
 #include "multi_CC.h"
@@ -128,6 +131,9 @@ read_eeprom(char *in)
     } else if(in[2] == 'o') { DH2(erb(EE_IP4_NTPOFFSET));
     } else if(in[2] == 'p') {
       DU(eeprom_read_word((uint16_t *)EE_IP4_TCPLINK_PORT), 0);
+#ifdef HAS_IP_FILTER
+    } else if(in[2] == 'f') { ipfilter_read();
+#endif
     }
   } else 
 #endif
@@ -182,6 +188,9 @@ write_eeprom(char *in)
     } else if(in[2] == 'a') { d=4; fromip (in+3,hb,4); addr=EE_IP4_ADDR;
     } else if(in[2] == 'n') { d=4; fromip (in+3,hb,4); addr=EE_IP4_NETMASK;
     } else if(in[2] == 'g') { d=4; fromip (in+3,hb,4); addr=EE_IP4_GATEWAY;
+#ifdef HAS_IP_FILTER
+    } else if(in[2] == 'f') { ipfilter_write(in);      // whole list at once
+#endif
     } else if(in[2] == 'p') { d=2; fromdec(in+3,hb);   addr=EE_IP4_TCPLINK_PORT;
     } else if(in[2] == 'N') { d=4; fromip (in+3,hb,4); addr=EE_IP4_NTPSERVER;
     } else if(in[2] == 'o') { d=1; fromhex(in+3,hb,1); addr=EE_IP4_NTPOFFSET;
@@ -296,6 +305,9 @@ eeprom_factory_reset(char *in)
 #endif
 #ifdef HAS_HTTPD
   ewb(EE_HTTPD_AUTH, 0);        // no web page password
+#endif
+#ifdef HAS_IP_FILTER
+  ipfilter_clear();             // everyone may connect
 #endif
 #ifdef HAS_FS
   ewb(EE_LOGENABLED, 0x00);

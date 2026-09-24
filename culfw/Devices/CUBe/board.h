@@ -144,8 +144,10 @@
 #define ETHERNET_KEEPALIVE_TIME 30
 #define HAS_NTP                 1       // undef or define...1
 #define HAS_HTTPD                       // configuration page on port 80
+#define HAS_IP_FILTER                   // whitelist of senders, Wif / page
 // The button on the bottom (PA14, active low). At power-up the bootloader
-// reads it; held for 10 s while running, it removes the web page password.
+// reads it; held for 10 s while running, it removes the web page password
+// and the IP whitelist.
 #define HTTPD_RESET_PIO         AT91C_BASE_PIOA
 #define HTTPD_RESET_PIN         BOOTLOADER_PIN
 

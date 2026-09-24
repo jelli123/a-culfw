@@ -124,6 +124,10 @@ typedef unsigned short uip_stats_t;
  */
 #define UIP_CONF_UDP_CONNS		1
 
+#ifdef HAS_IP_FILTER
+#define UIP_CONF_IP_FILTER		1	// uip_ip_allowed() in clib/ipfilter.c
+#endif
+
 //Include app configuration
 #include "apps-conf.h"
 

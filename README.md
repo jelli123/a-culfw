@@ -139,14 +139,35 @@ whole form first, then stores it and restarts the device.
 
 The page can be protected with a password (HTTP Basic authentication, user
 `admin`), set on the page itself. The EEPROM keeps only a salted SHA-256 hash;
-five wrong passwords lock the page for 30 seconds. To remove a forgotten
-password, hold the button on the bottom for 10 seconds while the CUBe is
-running - D1 then blinks fast. (Held at power-up, the same button starts the
-bootloader instead.) The `e` factory reset removes it as well.
+five wrong passwords lock the page for 30 seconds.
 
 The password protects this page, not the device: the TCP port accepts every
-command without one, and plain HTTP sends the password unencrypted. Keep the
-CUBe in a trusted network. A POST sent from a page on another host is refused.
+command without one, and plain HTTP sends the password unencrypted. A POST sent
+from a page on another host is refused.
+
+#### Allowed clients (IP whitelist)
+
+Up to four addresses or networks (`192.168.1.0/24, 10.0.0.5`) can be allowed;
+TCP and ICMP from any other sender are dropped without an answer - on every
+port, the TCP port for the CUL protocol included, and ping. UDP is not filtered:
+it only reaches the CUBe's own DHCP and NTP exchanges, whose servers need not be
+on the list. An empty list allows everyone. It is set on the configuration page,
+which refuses a list that leaves out the computer saving it, or with
+`Wif192.168.1.0/24,10.0.0.5` (`Wif` alone clears it) and read back with `Rif`.
+`Wif` takes effect at once, so over the network it can lock out the sender;
+USB is never filtered. (`clib/ipfilter.c`, enabled by `HAS_IP_FILTER`.)
+
+The whitelist checks the sender's address. From outside the local network that
+is hard to fake over TCP, as the answers never reach the forger; inside it, a
+device can take an allowed address. Clients that get their address by DHCP are
+best allowed by network.
+
+#### Resetting the access protection
+
+Hold the button on the bottom for 10 seconds while the CUBe is running: this
+removes the password and the whitelist, and D1 blinks fast. (Held at power-up,
+the same button starts the bootloader instead.) The `e` factory reset removes
+both as well.
 
 ## Repository Structure & Git
 

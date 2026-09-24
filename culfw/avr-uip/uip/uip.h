@@ -463,6 +463,12 @@ void uip_listen(u16_t port);
  */
 void uip_unlisten(u16_t port);
 
+#ifdef UIP_CONF_IP_FILTER
+/* Supplied by the application: 0 drops a TCP or ICMP packet from this
+   sender (network byte order) without an answer. */
+u8_t uip_ip_allowed(const void *srcipaddr);
+#endif
+
 /**
  * Connect to a remote host using TCP.
  *
