@@ -145,6 +145,23 @@ The password protects this page, not the device: the TCP port accepts every
 command without one, and plain HTTP sends the password unencrypted. A POST sent
 from a page on another host is refused.
 
+#### Radio modules and duty cycle
+
+The page lists every radio module found (the CUBEx4 detects them at start)
+with its band, the frequency and state read from the chip, and its mode.
+Below it is the duty cycle budget: the air time left under the 1 % rule, shared
+by all modules. SlowRF (FS20, FHT, ...), MAX! and Maico transmissions draw on
+it; the firmware does not limit the other modes.
+
+For debugging, the limit can be suspended for 1-60 minutes (5 by default),
+after confirming that the radio regulations that apply will be observed. Many
+bands allow only a limited duty cycle - in the EU, for instance, 1 % in
+868.0-868.6 MHz (ERC Recommendation 70-03, EN 300 220); the operator is
+responsible for staying within the rules of the country the device is used in.
+The suspension ends by itself, on a restart, or with "Enforce the limit again".
+Air time sent meanwhile is still taken from the budget, down to 0, so the hour
+after it starts from what was really sent.
+
 #### Allowed clients (IP whitelist)
 
 Up to four addresses or networks (`192.168.1.0/24, 10.0.0.5`) can be allowed;

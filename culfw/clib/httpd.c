@@ -43,9 +43,18 @@
 #ifdef HAS_IP_FILTER
 #include "ipfilter.h"
 #endif
+#ifdef USE_RF_MODE
+#include "cc1100.h"
+#include "fband.h"
+#include "rf_mode.h"
+#include "rf_send.h"
+#ifdef USE_HW_AUTODETECT
+#include "hw_autodetect.h"
+#endif
+#endif
 
 #define RX_SIZE       1024            // request line, headers and body
-#define TX_SIZE       4096            // the complete response
+#define TX_SIZE       6144            // the complete response
 #define REQ_TIMEOUT   (CLOCK_SECOND * 10)
 #define REBOOT_DELAY  (CLOCK_SECOND * 3)
 
@@ -60,6 +69,9 @@
 
 #define RESET_HOLD    40              // httpd_periodic calls, 4 per second
 #define RESET_BLINK   24
+
+#define DUTY_MAX_MIN  60              // longest suspension of the 1 % limit
+#define DUTY_DEF_MIN  5
 
 static struct uip_conn *owner;        // the connection being served
 static struct timer req_timer;
@@ -165,6 +177,8 @@ out_head(const char *refresh_ip)
       "label{display:block;margin:.7em 0 .2em}"
       "input:not([type=checkbox]){width:100%;box-sizing:border-box;padding:.3em}"
       "h2{font-size:1.1em;margin-top:1.5em}"
+      "table{border-collapse:collapse}"
+      "td,th{padding:.2em .6em .2em 0;text-align:left}"
       "button{margin-top:1em;padding:.5em 1em}"
       ".i{color:#666;font-size:.9em}.e{padding:.5em;background:#fdd}"
       "</style></head><body><h1>" BOARD_NAME "</h1>"
@@ -191,6 +205,132 @@ out_field(const char *label, char name, uint8_t *ee_ip)
     out_ip(ee_ip);
 }
 
+#ifdef USE_RF_MODE
+#ifdef HAS_MULTI_CC
+#define RADIO_COUNT HAS_MULTI_CC
+#else
+#define RADIO_COUNT 1
+#endif
+
+/* In RF_mode_t order. */
+static const char * const mode_name[] = {
+  "off", "SlowRF (FS20, FHT, ...)", "AskSin (HomeMatic)", "MAX!",
+  "Wireless M-Bus S", "Wireless M-Bus T", "Maico", "native 1", "native 2",
+  "native 3", "Somfy RTS", "Intertechno", "RWE", "FastRF", "Z-Wave"
+};
+
+static uint8_t
+radio_present(uint8_t i)
+{
+#ifdef USE_HW_AUTODETECT
+  return has_CC(i);
+#else
+  return i < RADIO_COUNT;
+#endif
+}
+
+/* n / 10^decimals, with that many decimals */
+static void
+out_fixed(uint32_t n, uint8_t decimals)
+{
+  uint16_t div = 1;
+  for(uint8_t i = 0; i < decimals; i++)
+    div *= 10;
+  out_u(n / div);
+  out(".");
+  for(uint16_t d = div / 10; d; d /= 10)
+    out_u(n / d % 10);
+}
+
+static const char *
+marc_state(uint8_t s)
+{
+  s &= 0x1f;
+  if(s == 0x01)               return "idle";
+  if(s >= 0x0d && s <= 0x0f)  return "receiving";
+  if(s >= 0x13 && s <= 0x15)  return "transmitting";
+  if(s == 0x11)               return "RX overflow";
+  if(s == 0x16)               return "TX underflow";
+  return "busy";              // calibrating, settling, ...
+}
+
+/* One row per module found. Frequency and state are read from the chip:
+   every mode programs its own frequency. */
+static void
+out_radios(void)
+{
+  out("<h2>Radio modules</h2><table><tr><th>#</th><th>Band</th>"
+      "<th>Frequency</th><th>Mode</th><th>State</th></tr>");
+  uint8_t old = CC1101.instance;
+  for(uint8_t i = 0; i < RADIO_COUNT; i++) {
+    if(!radio_present(i))
+      continue;
+    CC1101.instance = i;
+    uint32_t f = (uint32_t)cc1100_readReg(CC1100_FREQ2) << 16 |
+                 (uint32_t)cc1100_readReg(CC1100_FREQ1) << 8 |
+                 cc1100_readReg(CC1100_FREQ0);
+    uint8_t state = cc1100_readReg(CC1100_MARCSTATE);
+    CC1101.instance = old;
+
+    uint8_t band = CC1101.frequencyMode[i];
+    RF_mode_t mode = CC1101.RF_mode[i];
+    out("<tr><td>");
+    out_u(i);
+    out("</td><td>");
+    out(band == MODE_433_MHZ ? "433 MHz" : band == MODE_868_MHZ ? "868 MHz" : "?");
+    out("</td><td>");
+    out_fixed(((uint64_t)f * 26000 + 0x8000) >> 16, 3); // 26 MHz crystal, kHz
+    out(" MHz</td><td>");
+    out(mode < sizeof(mode_name) / sizeof(*mode_name) ? mode_name[mode] : "?");
+    out("</td><td>");
+    out(mode == RF_mode_off ? "off" : marc_state(state));
+    out("</td></tr>");
+  }
+  out("</table>");
+}
+
+/* The duty cycle budget (credit_10ms) and the form to suspend it. */
+static void
+out_duty(void)
+{
+  out("<h2>Duty cycle (1 % rule)</h2><p>Budget: ");
+  out_fixed(credit_10ms, 2);
+  out(" s of ");
+  out_fixed(MAX_CREDIT, 2);
+  out(" s air time. It refills by 10 ms per second, i.e. 1 % of the time, "
+      "and is shared by all modules. SlowRF, MAX! and Maico transmissions "
+      "draw on it; the firmware does not limit the other modes.</p>");
+
+  if(credit_suspend_s) {
+    out("<p class=\"e\">The limit is suspended for another ");
+    out_u(credit_suspend_s / 60);
+    out(":");
+    out_u(credit_suspend_s % 60 / 10);
+    out_u(credit_suspend_s % 10);
+    out(" min.</p><form method=\"post\" action=\"/duty\">"
+        "<input type=\"hidden\" name=\"m\" value=\"0\">"
+        "<button>Enforce the limit again</button></form>");
+    return;
+  }
+  out("<form method=\"post\" action=\"/duty\">"
+      "<label for=\"m\">Suspend the limit for debugging, minutes (1-");
+  out_u(DUTY_MAX_MIN);
+  out(")</label><input type=\"number\" id=\"m\" name=\"m\" min=\"1\" max=\"");
+  out_u(DUTY_MAX_MIN);
+  out("\" value=\"");
+  out_u(DUTY_DEF_MIN);
+  out("\"><p class=\"e\">Many bands allow only a limited duty cycle - in "
+      "the EU, for instance, 1 % in 868.0-868.6 MHz (ERC Recommendation "
+      "70-03, EN 300 220). Transmitting beyond it can break the law and "
+      "disturbs other users of the band. You are responsible for observing "
+      "the radio regulations of the country the device is operated in. "
+      "The suspension ends by itself and with every restart.</p>"
+      "<label><input type=\"checkbox\" name=\"c\" value=\"1\" required> "
+      "I will observe the radio regulations that apply here</label>"
+      "<button>Suspend the limit</button></form>");
+}
+#endif
+
 static void
 page_config(const char *error)
 {
@@ -203,6 +343,11 @@ page_config(const char *error)
     out(error);
     out(" Nothing was saved.</p>");
   }
+#ifdef USE_RF_MODE
+  out_radios();
+  out_duty();
+  out("<h2>Network</h2>");
+#endif
   out("<form method=\"post\" action=\"/\">"
       "<label><input type=\"checkbox\" name=\"d\" value=\"1\"");
   if(erb(EE_USE_DHCP))
@@ -289,6 +434,13 @@ page_error(const char *status)
   out("</title><p>");
   out(status);
   out("</p>");
+}
+
+static void
+page_redirect(void)
+{
+  out("HTTP/1.0 303 See Other\r\nLocation: /\r\n"
+      "Cache-Control: no-store\r\nConnection: close\r\n\r\n");
 }
 
 static void
@@ -699,6 +851,28 @@ handle_save(const char *body)
   schedule_reboot();
 }
 
+#ifdef USE_RF_MODE
+/* m=0 enforces the duty cycle limit again; m=1..DUTY_MAX_MIN suspends it
+   for that many minutes, but only with the regulations confirmed (c=1). */
+static void
+handle_duty(const char *body)
+{
+  uint16_t len = 0, m;
+  const char *v = field(body, 'm', &len);
+  if(!parse_uint(v, len, DUTY_MAX_MIN, &m)) {
+    page_config("Invalid duration (1-60 minutes).");
+    return;
+  }
+  v = field(body, 'c', &len);
+  if(m && !(v && len == 1 && v[0] == '1')) {
+    page_config("Confirm that you observe the radio regulations.");
+    return;
+  }
+  credit_suspend_s = m * 60;
+  page_redirect();
+}
+#endif
+
 /* Called once the request is complete in rx[]; renders the response. */
 static void
 handle_request(const char *hdr_end)
@@ -717,6 +891,10 @@ handle_request(const char *hdr_end)
     page_error("403 Forbidden");
   else if(root)
     handle_save(hdr_end + 4);
+#ifdef USE_RF_MODE
+  else if(!strncmp(path, "/duty ", 6))
+    handle_duty(hdr_end + 4);
+#endif
   else if(!strncmp(path, "/reboot ", 8)) {
     page_restart(0);
     schedule_reboot();
