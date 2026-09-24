@@ -92,14 +92,19 @@ SECTIONS
         _srelocate = .;
         *(.vectors)
         *(.ramfunc)
-        *(.data)
+        *(.data .data.*)
         . = ALIGN(4);
         _erelocate = .;
     } >sram
 
     .bss (NOLOAD) : {
         _szero = .;
-        *(.bss)
+        /* COMMON too (-fcommon): ld puts it at the end of .bss, and with
+           only *(.bss) listed that was behind _ezero - never cleared at
+           start, so ticks, credit_suspend_s and the like began with what
+           the RAM held, across a restart even the old values. */
+        *(.bss .bss.*)
+        *(COMMON)
         . = ALIGN(4);
         _ezero = .;
     } >sram
