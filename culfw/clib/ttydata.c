@@ -93,7 +93,9 @@ analyze_ttydata(uint8_t channel)
       cmdbuf[cmdlen] = 0;
       TRACE_DEBUG("TTYDATA received: %s\n\r", cmdbuf);
 #ifdef HAS_HELP
-      if(cmdbuf[0] == '?' && cmdbuf[1]) {     // a bare ? stays as it was
+      // ?? or ?<letter> only: a bare ? stays as it was, and a peer echoing
+      // "? (...) is unknown" back gets that answer, not the help
+      if(cmdbuf[0] == '?' && cmdbuf[1] && !cmdbuf[2]) {
         help(cmdbuf+1);
       } else
 #endif
