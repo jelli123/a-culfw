@@ -150,6 +150,7 @@
 // and the IP whitelist.
 #define HTTPD_RESET_PIO         AT91C_BASE_PIOA
 #define HTTPD_RESET_PIN         BOOTLOADER_PIN
+#define HAS_HELP                        // ?? and ?<letter> on the console
 
 
 

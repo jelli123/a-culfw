@@ -186,6 +186,13 @@ removes the password and the whitelist, and D1 blinks fast. (Held at power-up,
 the same button starts the bootloader instead.) The `e` factory reset removes
 both as well.
 
+#### Help on the console
+
+`??` lists the commands of the running firmware with a short description,
+`?<letter>` (for example `?W`) describes one. A bare `?` answers as before,
+`? (? is unknown) Use one of ...`: FHEM reads the command letters from it.
+(`clib/help.c`, enabled by `HAS_HELP`.)
+
 ## Repository Structure & Git
 
 To keep the repository clean, only the final products in the `binaries/` folder are tracked. Temporary build files are ignored.

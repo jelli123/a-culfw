@@ -6,6 +6,9 @@
 #include "ttydata.h"
 #include "rf_mode.h"
 #include "hw_autodetect.h"
+#ifdef HAS_HELP
+#include "help.h"
+#endif
 #ifdef ARM
 #include <utility/trace.h>
 #else
@@ -89,6 +92,11 @@ analyze_ttydata(uint8_t channel)
 
       cmdbuf[cmdlen] = 0;
       TRACE_DEBUG("TTYDATA received: %s\n\r", cmdbuf);
+#ifdef HAS_HELP
+      if(cmdbuf[0] == '?' && cmdbuf[1]) {     // a bare ? stays as it was
+        help(cmdbuf+1);
+      } else
+#endif
       if(!callfn(cmdbuf)) {
         DS_P(PSTR("? ("));
         display_string(cmdbuf);
