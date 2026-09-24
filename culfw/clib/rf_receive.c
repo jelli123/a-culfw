@@ -140,7 +140,7 @@ tx_init(void)
 #endif
 #endif
 
-  credit_10ms = MAX_CREDIT/2;
+  credit_10ms = START_CREDIT;
 
   for(int i = 1; i < RCV_BUCKETS; i ++)
     bucket_array[CC_INSTANCE][i].state = STATE_RESET;

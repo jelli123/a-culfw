@@ -59,19 +59,16 @@ uint16_t credit_suspend_s;
 
 /* Takes sum 10 ms units of air time from the duty cycle budget; 0 means
    there is not enough left and the caller must not send. While the limit
-   is suspended (credit_suspend_s) it is not enforced, but the air time is
-   still taken, down to 0, so the hour after a suspension starts from what
-   was actually sent. */
+   is suspended (credit_suspend_s) nothing is taken: FHEM reads the budget
+   with X and holds its commands back while it is low. */
 uint8_t
 credit_take(uint16_t sum)
 {
-  if(credit_10ms >= sum) {
-    credit_10ms -= sum;
+  if(credit_suspend_s)
     return 1;
-  }
-  if(!credit_suspend_s)
+  if(credit_10ms < sum)
     return 0;
-  credit_10ms = 0;
+  credit_10ms -= sum;
   return 1;
 }
 

@@ -349,7 +349,9 @@ out_duty(void)
         "<button>Enforce the limit again</button></form>");
     return;
   }
-  out("<form method=\"post\" action=\"/duty\">"
+  // novalidate: the browser would complain in its own language; the
+  // server checks both fields anyway (handle_duty)
+  out("<form method=\"post\" action=\"/duty\" novalidate>"
       "<label for=\"m\">Suspend the limit for debugging, minutes (1-");
   out_u(DUTY_MAX_MIN);
   out(")</label><input type=\"number\" id=\"m\" name=\"m\" min=\"1\" max=\"");
@@ -361,7 +363,8 @@ out_duty(void)
       "70-03, EN 300 220). Transmitting beyond it can break the law and "
       "disturbs other users of the band. You are responsible for observing "
       "the radio regulations of the country the device is operated in. "
-      "The suspension ends by itself and with every restart.</p>"
+      "The suspension ends by itself and with every restart. It fills the "
+      "budget, and nothing is taken from it meanwhile.</p>"
       "<label><input type=\"checkbox\" name=\"c\" value=\"1\" required> "
       "I will observe the radio regulations that apply here</label>"
       "<button>Suspend the limit</button></form>");
@@ -909,6 +912,8 @@ handle_duty(const char *body)
     return;
   }
   credit_suspend_s = m * 60;
+  if(m)                               // nothing is taken while suspended:
+    credit_10ms = MAX_CREDIT;         // keep FHEM from waiting on it
   page_redirect();
 }
 #endif

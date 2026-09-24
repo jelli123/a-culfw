@@ -23,5 +23,8 @@ uint8_t credit_take(uint16_t sum);
 #ifndef MAX_CREDIT
 #define MAX_CREDIT 900       // max 9 seconds burst / 25% of the hourly budget
 #endif
+#ifndef START_CREDIT
+#define START_CREDIT (MAX_CREDIT/2)     // budget after a restart
+#endif
 
 #endif

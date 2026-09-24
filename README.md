@@ -162,9 +162,10 @@ bands allow only a limited duty cycle - in the EU, for instance, 1 % in
 868.0-868.6 MHz (ERC Recommendation 70-03, EN 300 220); the operator is
 responsible for staying within the rules of the country the device is used in.
 The suspension ends by itself, on a restart, or with "Enforce the limit again".
-Air time sent meanwhile is still taken from the budget, down to 0, so the hour
-after it starts from what was really sent. While it lasts, the heartbeat on
-LED1 blinks fast.
+The suspension fills the budget, and nothing is taken from it meanwhile: FHEM
+reads it with `X` and would otherwise hold its commands back once it runs low.
+After a restart the budget is full as well (`START_CREDIT`). While the suspension lasts,
+the heartbeat on LED1 blinks fast.
 
 #### Allowed clients (IP whitelist)
 

@@ -43,6 +43,7 @@
 #define HAS_ONEWIRE             10        // OneWire Support
 #endif
 #define MAX_CREDIT 3600       // max 36 seconds burst / 100% of the hourly budget
+#define START_CREDIT MAX_CREDIT         // full after a restart
 
 #define HAS_FHT_80b
 #define HAS_FHT_8v
