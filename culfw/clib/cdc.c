@@ -7,6 +7,18 @@
 #include "display.h"
 
 static unsigned char usbBufferOut[DATABUFFERSIZEOUT];
+#ifdef SAM7
+static volatile uint8_t usb_tx_busy;    // usbBufferOut not yet taken
+
+// Called by the USB driver once the host took the block, or the transfer
+// was aborted (USB reset, disconnect).
+static void
+usb_tx_done(void *unused, unsigned char status, unsigned int transferred,
+            unsigned int remaining)
+{
+  usb_tx_busy = 0;
+}
+#endif
 #else
 /* Globals: */
 CDC_Line_Coding_t LineCoding = { BaudRateBPS: 9600,
@@ -84,6 +96,26 @@ CDC_Task(void)
     inCDC_TASK = 0;
   }
 
+#ifdef SAM7
+	// Only when the host took the last block: with the port closed on the
+	// host nobody reads the IN endpoint, and waiting for it here ran into
+	// the watchdog. Meanwhile the output stays in TTY_Tx_Buffer, and what
+	// no longer fits is dropped.
+	if(TTY_Tx_Buffer.nbytes && !usb_tx_busy) {
+		uint16_t i=0;
+
+		while(TTY_Tx_Buffer.nbytes && i<DATABUFFERSIZEOUT) {
+
+			 usbBufferOut[i++]=rb_get(&TTY_Tx_Buffer);
+		}
+
+		usb_tx_busy = 1;
+		if(CDCDSerialDriver_Write(usbBufferOut, i,
+		                          (TransferCallback)usb_tx_done, 0)
+		   != USBD_STATUS_SUCCESS)
+			usb_tx_busy = 0;
+	}
+#else
 	if(TTY_Tx_Buffer.nbytes) {
 		uint16_t i=0;
 
@@ -95,6 +127,7 @@ CDC_Task(void)
 		while (CDCDSerialDriver_Write(usbBufferOut,i, 0, 0) != USBD_STATUS_SUCCESS);
 
 	}
+#endif
 
 
 #else
