@@ -39,14 +39,15 @@ jobs:
           cd culfw
           pio run
 
-      # MapleCUN is not in default_envs on purpose: PlatformIO cannot resolve
+      # MapleCUN and CUBe are not in default_envs on purpose: PlatformIO cannot resolve
       # the ARM toolchain for the ststm32 platform on linux_aarch64, so a
       # default build would break on an arm64 workstation. The runner is
       # x86_64, so build it explicitly here.
-      - name: Build MapleCUN and SBU targets
+      - name: Build MapleCUN, CUBe and SBU targets
         run: |
           cd culfw
-          pio run -e MapleCUNx4_W5100_BL -e MapleCUNx4_W5500_BL -e CUL_V3_SBU
+          pio run -e MapleCUNx4_W5100_BL -e MapleCUNx4_W5500_BL -e CUL_V3_SBU \
+                  -e CUBE_BL -e CUBEx4_BL
 
       # collect_binaries.py copies every built image into binaries/ and writes
       # manifest.json. Uploading culfw/Devices/**/*.hex instead would only pick
@@ -61,7 +62,7 @@ jobs:
             binaries/manifest.json
           if-no-files-found: error
 
-  # The PlatformIO job above covers five devices. Everything else in
+  # The PlatformIO job above covers six devices. Everything else in
   # culfw/Devices/ is built only by its own makefile, and nothing checked those
   # for years — long enough for CUNO to end up 300 bytes over its RAM without
   # anyone noticing. This job builds every one of them on every push.

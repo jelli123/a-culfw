@@ -47,6 +47,12 @@ SECTIONS
     {
         . = ALIGN(4);
         _sfixed = .;
+        /* The startup code first, whatever order the objects are linked in:
+           the image has to begin with its 'ldr pc, =1f' - the bootloader
+           only accepts a .bin whose first word is an 'ldr pc' (0xE59F...) and
+           starts the application at the beginning of its area. The makefile
+           happens to link board_cstartup.o first; PlatformIO does not. */
+        *board_cstartup.o(.text)
         *(.text*)
         *(.rodata*)
         *(.data.__malloc_av_)

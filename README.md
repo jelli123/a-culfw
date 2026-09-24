@@ -23,8 +23,10 @@ Currently, the following environments are defined:
 2.  **CUL_V3** (ATmega32U4 with native USB)
 3.  **MapleCUNx4_W5100_BL / MapleCUNx4_W5500_BL** (STM32F103CB, Quad-CC1101, Ethernet)
 4.  **CUNO** (ATmega644P, ENC28J60 Ethernet; one image for 868 and 433 MHz)
+5.  **CUBE_BL / CUBEx4_BL** (eQ-3 MAX! Cube, AT91SAM7X256, Ethernet; single
+    and four-CC1101 variant, both for the USB mass storage bootloader)
 
-Every other device in `culfw/Devices/` — COC, CUN, CUNO2, CUBe, SCC,
+Every other device in `culfw/Devices/` — COC, CUN, CUNO2, SCC,
 megaCUL, miniCUL, CUL-Arduino and the rest — is built with its own `makefile`,
 not with PlatformIO.
 
@@ -38,7 +40,7 @@ measurably between the two.
 
 ## Generating Firmware (Build)
 
-By default, `pio run` builds the four AVR targets listed in `default_envs`. The MapleCUN environments must be selected explicitly.
+By default, `pio run` builds the four AVR targets listed in `default_envs`. The ARM environments (MapleCUN, CUBe) must be selected explicitly.
 
 ### Build Commands in the Terminal
 
@@ -50,10 +52,18 @@ pio run
 pio run -e nanoCUL868
 pio run -e MapleCUNx4_W5500_BL
 pio run -e CUNO
+pio run -e CUBE_BL -e CUBEx4_BL
 ```
 
-The MapleCUN environments need an **x86_64** host: on linux_aarch64 PlatformIO
-cannot resolve the ARM toolchain the `ststm32` platform asks for. The AVR
+The MapleCUN and CUBe environments need an **x86_64** host: on linux_aarch64
+PlatformIO cannot resolve the ARM toolchain the `ststm32` platform asks for.
+
+PlatformIO has no platform for the CUBe's AT91SAM7X256 (ARM7TDMI). Its
+environments borrow `ststm32` for the arm-none-eabi toolchain and describe the
+chip in `boards/cube.json`; `scripts/at91sam7.py` removes the Cortex-M flags
+`ststm32` adds (`-mthumb`, `-fdata-sections`). The CUBe linker scripts place
+`board_cstartup.o` first explicitly, because the bootloader only accepts an
+image that starts with it. The AVR
 targets build on both.
 
 ### Build profiles
@@ -107,6 +117,16 @@ EEPROM flag it sets, so it only resets the device. Then:
 avrdude -p atmega644p -c avr109 -P /dev/ttyUSB0 -b 38400 -U flash:w:../binaries/CUNO.hex:i
 # or
 pio run -e CUNO -t upload --upload-port /dev/ttyUSB0
+```
+
+### 4. CUBe (eQ-3 MAX! Cube)
+Needs the a-culfw USB mass storage bootloader
+(see [`culfw/Devices/CUBe/README.md`](culfw/Devices/CUBe/README.md) for
+installing it with SAM-BA). Hold the button on the bottom while plugging in USB
+(or send `B01` to a running a-culfw); D1 blinks four times a second. Then copy
+`CUBE_BL.bin` (or `CUBEx4_BL.bin`) onto the drive it presents, or:
+```bash
+pio run -e CUBE_BL -t upload --upload-port /media/$USER/<drive>
 ```
 
 ## Repository Structure & Git
