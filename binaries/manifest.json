@@ -76,5 +76,18 @@
                 "type": "app"
             }
         ]
+    },
+    "CUBE_BL": {
+        "platform": "ststm32",
+        "board": "cube",
+        "mcu": "at91sam7x256",
+        "version": "1.29.3",
+        "last_build": "2026-09-24 13:25:32",
+        "artifacts": [
+            {
+                "file": "CUBE_BL.bin",
+                "type": "ota"
+            }
+        ]
     }
 }
