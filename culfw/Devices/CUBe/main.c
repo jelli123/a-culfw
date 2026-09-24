@@ -124,10 +124,6 @@ volatile unsigned int timestamp = 0;
  /// Buffer for storing incoming USB data.
  static unsigned char usbBuffer[DATABUFFERSIZE];
 
-#ifdef HAS_STATUS_LEDS
- /// Data went over USB since status_leds() last looked.
- static volatile uint8_t usb_data;
-#endif
 
 //------------------------------------------------------------------------------
 //         Local functions
@@ -552,10 +548,6 @@ int main(void)
   // Main loop
   while (1) {
 
-#ifdef HAS_STATUS_LEDS
-    if(TTY_Tx_Buffer.nbytes && USB_IsConnected)
-      usb_data = 1;                   // sent by CDC_Task below
-#endif
     CDC_Task();
 #ifdef HAS_STATUS_LEDS
     status_leds();

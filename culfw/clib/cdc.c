@@ -9,6 +9,7 @@
 static unsigned char usbBufferOut[DATABUFFERSIZEOUT];
 #ifdef SAM7
 static volatile uint8_t usb_tx_busy;    // usbBufferOut not yet taken
+volatile uint8_t usb_data;              // data went over USB (LED3)
 
 // Called by the USB driver once the host took the block, or the transfer
 // was aborted (USB reset, disconnect).
@@ -17,6 +18,8 @@ usb_tx_done(void *unused, unsigned char status, unsigned int transferred,
             unsigned int remaining)
 {
   usb_tx_busy = 0;
+  if(status == USBD_STATUS_SUCCESS && transferred)
+    usb_data = 1;
 }
 #endif
 #else

@@ -16,6 +16,7 @@
 /// Size in bytes of the buffer used for reading data from the USB
 #define DATABUFFERSIZEOUT \
     BOARD_USB_ENDPOINTS_MAXPACKETSIZE(CDCDSerialDriverDescriptors_DATAOUT)
+extern volatile uint8_t usb_data;       // set on data in either direction
 
 #elif defined STM32
 #include <usb_device.h>
