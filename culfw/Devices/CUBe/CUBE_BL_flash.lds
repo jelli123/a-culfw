@@ -37,8 +37,12 @@ ENTRY(entry)
 
 MEMORY
 {
+    /* Not to the end of the 256 KiB: the EEPROM emulation
+       (at91lib/avr/eeprom.c, NUM_PAGES 64 from page 959) lives in
+       0x13BF00-0x13FF00. An image running into it would be flashed over the
+       settings, so the link has to fail first. */
     sram (W!RX) : ORIGIN = 0x200000, LENGTH = 0x10000
-    flash (RX) : ORIGIN = 0x104000, LENGTH = 0x3C000
+    flash (RX) : ORIGIN = 0x104000, LENGTH = 0x37F00
 }
 
 SECTIONS
