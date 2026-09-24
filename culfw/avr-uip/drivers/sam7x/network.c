@@ -82,7 +82,8 @@ static Dm9161 gDm9161;
 
 static struct uip_eth_addr MacAddress;
 
-static int  linkstate = 0;
+static int  linkstate = 0;           // negotiated once; stays set
+static uint8_t link_up;             // the PHY reports a link (LED2)
 //-----------------------------------------------------------------------------
 /// Emac interrupt handler
 //-----------------------------------------------------------------------------
@@ -233,23 +234,34 @@ void ethernet_process(void) {
 
 }
 
-/* Four times a second: notices a lost link, so that ethernet_process()
-   negotiates it again when it comes back. The link bit in BMSR latches
-   low, so a drop between two calls is seen as well. */
+/* Four times a second: follows the link for LED2. The link bit in BMSR
+   latches low - every negotiation, the one at start included, leaves a 0
+   behind - so the first read only clears it and the second tells the
+   state. The PHY negotiates a returning link by itself; linkstate stays
+   set, as clearing it would restart the negotiation, drop the link and
+   latch the bit again, over and over. Only the EMAC's speed and duplex
+   are set again, the partner may have changed. */
 void interface_periodic(void) {
-	unsigned int bmsr;
+	unsigned int bmsr = 0;
+	uint8_t up;
 
 	if(!linkstate)
 		return;
 	EMAC_EnableMdio();
-	if(EMAC_ReadPhy(gDm9161.phyAddress, DM9161_BMSR, &bmsr, gDm9161.retryMax)
-	   && !(bmsr & DM9161_LINK_STATUS)) {
-		TRACE_INFO("P: Link lost\n\r");
-		linkstate = 0;
-	}
+	EMAC_ReadPhy(gDm9161.phyAddress, DM9161_BMSR, &bmsr, gDm9161.retryMax);
+	up = EMAC_ReadPhy(gDm9161.phyAddress, DM9161_BMSR, &bmsr, gDm9161.retryMax)
+	     && (bmsr & DM9161_LINK_STATUS);
 	EMAC_DisableMdio();
+
+	if(up && !link_up) {
+		TRACE_INFO("P: Link up\n\r");
+		DM9161_GetLinkSpeed(&gDm9161, 1);
+	} else if(!up && link_up) {
+		TRACE_INFO("P: Link lost\n\r");
+	}
+	link_up = up;
 }
 
 uint8_t network_link_up(void) {
-	return linkstate;
+	return link_up;
 }
