@@ -27,4 +27,7 @@ void network_set_led(uint16_t led);
 
 void interface_periodic(void);
 
+/*1 while the PHY has a link (sam7x driver only)*/
+uint8_t network_link_up(void);
+
 #endif /* __NETWORK_H__ */

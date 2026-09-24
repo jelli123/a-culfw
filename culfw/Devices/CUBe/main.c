@@ -193,7 +193,7 @@ static void UsbDataReceived(unsigned int unused,
 #include "delay.h"
 
 #ifdef HAS_STATUS_LEDS
-/* LED2: an IP address, from DHCP or a fixed one. LED3: USB configured, dark
+/* LED2: link, and an IP address (DHCP or fixed). LED3: USB configured, dark
    for a moment on data in either direction (on for good while it flows).
    LED1, the heartbeat, is clock.c's. */
 static void
@@ -205,7 +205,7 @@ status_leds(void)
     return;
   last = ticks;
 
-  if(ethernet_ip_ok())
+  if(ethernet_ready())
     LED2_ON();
   else
     LED2_OFF();

@@ -193,7 +193,7 @@ both as well.
 | LED | Shows |
 |---|---|
 | LED1 | heartbeat, blinking slowly; fast while the duty cycle limit is suspended |
-| LED2 | on once the CUBe has an IP address: DHCP answered, or a fixed address |
+| LED2 | on while there is a link and the CUBe has an IP address (DHCP, or fixed) |
 | LED3 | on while USB is connected, dark for a moment when data goes over it |
 
 All three blinking together confirm the reset of the access protection.

@@ -45,6 +45,7 @@
 #include <dbgu/dbgu.h>
 #include <emac/emac.h>
 #include <ethernet/dm9161/dm9161.h>
+#include <ethernet/dm9161/dm9161_define.h>
 #include <string.h>
 #include <utility/trace.h>
 #include <utility/assert.h>
@@ -232,5 +233,23 @@ void ethernet_process(void) {
 
 }
 
+/* Four times a second: notices a lost link, so that ethernet_process()
+   negotiates it again when it comes back. The link bit in BMSR latches
+   low, so a drop between two calls is seen as well. */
 void interface_periodic(void) {
+	unsigned int bmsr;
+
+	if(!linkstate)
+		return;
+	EMAC_EnableMdio();
+	if(EMAC_ReadPhy(gDm9161.phyAddress, DM9161_BMSR, &bmsr, gDm9161.retryMax)
+	   && !(bmsr & DM9161_LINK_STATUS)) {
+		TRACE_INFO("P: Link lost\n\r");
+		linkstate = 0;
+	}
+	EMAC_DisableMdio();
+}
+
+uint8_t network_link_up(void) {
+	return linkstate;
 }
