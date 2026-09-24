@@ -55,6 +55,25 @@
 #endif
 
 uint16_t credit_10ms;
+uint16_t credit_suspend_s;
+
+/* Takes sum 10 ms units of air time from the duty cycle budget; 0 means
+   there is not enough left and the caller must not send. While the limit
+   is suspended (credit_suspend_s) it is not enforced, but the air time is
+   still taken, down to 0, so the hour after a suspension starts from what
+   was actually sent. */
+uint8_t
+credit_take(uint16_t sum)
+{
+  if(credit_10ms >= sum) {
+    credit_10ms -= sum;
+    return 1;
+  }
+  if(!credit_suspend_s)
+    return 0;
+  credit_10ms = 0;
+  return 1;
+}
 
 #define TMUL(x) (x<<4)
 #define TDIV(x) (x>>4)
@@ -103,12 +122,14 @@ sendraw(uint8_t *msg, uint8_t sync, uint8_t nbyte, uint8_t bitoff,
     return;                                     // do-while below -> 256 sends
   // 12*800+1200+nbyte*(8*1000)+(bits*1000)+800+10000
   // message len is < (nbyte+2)*repeat in 10ms units.
-  int8_t i, j, sum = (nbyte+2)*repeat + addH + addL;
-  if (credit_10ms < sum) {
+  // sum used to be an int8_t: from 128 on it went negative, passed the
+  // check and was added to the budget instead of taken from it.
+  int8_t i, j;
+  uint16_t sum = (nbyte+2)*repeat + addH + addL;
+  if (!credit_take(sum)) {
     DS_P(PSTR("LOVF\r\n"));
     return;
   }
-  credit_10ms -= sum;
 
   LED_ON();
 

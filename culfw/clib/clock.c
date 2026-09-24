@@ -219,6 +219,8 @@ Minute_Task(void)
 
   if (credit_10ms < MAX_CREDIT) // 10ms/1s == 1% -> allowed talk-time without CD
     credit_10ms += 1;
+  if (credit_suspend_s)         // a debug suspension of the limit runs out
+    credit_suspend_s--;
 
 #ifdef HAS_ONEWIRE
   // if HMS Emulation is on, check the HMS timer
