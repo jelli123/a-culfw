@@ -144,6 +144,10 @@
 #define ETHERNET_KEEPALIVE_TIME 30
 #define HAS_NTP                 1       // undef or define...1
 #define HAS_HTTPD                       // configuration page on port 80
+// The button on the bottom (PA14, active low). At power-up the bootloader
+// reads it; held for 10 s while running, it removes the web page password.
+#define HTTPD_RESET_PIO         AT91C_BASE_PIOA
+#define HTTPD_RESET_PIN         BOOTLOADER_PIN
 
 
 

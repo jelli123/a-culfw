@@ -294,6 +294,9 @@ eeprom_factory_reset(char *in)
 #if defined(HAS_ETHERNET) | defined(HAS_WIZNET)
   ethernet_reset();
 #endif
+#ifdef HAS_HTTPD
+  ewb(EE_HTTPD_AUTH, 0);        // no web page password
+#endif
 #ifdef HAS_FS
   ewb(EE_LOGENABLED, 0x00);
 #endif

@@ -129,12 +129,24 @@ installing it with SAM-BA). Hold the button on the bottom while plugging in USB
 pio run -e CUBE_BL -t upload --upload-port /media/$USER/<drive>
 ```
 
+#### Configuration page
+
 The CUBe firmware serves a configuration page on port 80
 (`culfw/clib/httpd.c`, enabled by `HAS_HTTPD` in its `board.h`): DHCP, IP
-address, netmask, gateway, NTP server, the TCP port for FHEM and the time zone
-- the settings the `Wi*` commands write. Saving validates the whole form first,
-then stores it and restarts the device. There is no password, as there is none
-on the TCP port either; a POST sent from a page on another host is refused.
+address, netmask, gateway, NTP server, the TCP port for the CUL protocol and
+the time zone - the settings the `Wi*` commands write. Saving validates the
+whole form first, then stores it and restarts the device.
+
+The page can be protected with a password (HTTP Basic authentication, user
+`admin`), set on the page itself. The EEPROM keeps only a salted SHA-256 hash;
+five wrong passwords lock the page for 30 seconds. To remove a forgotten
+password, hold the button on the bottom for 10 seconds while the CUBe is
+running - D1 then blinks fast. (Held at power-up, the same button starts the
+bootloader instead.) The `e` factory reset removes it as well.
+
+The password protects this page, not the device: the TCP port accepts every
+command without one, and plain HTTP sends the password unencrypted. Keep the
+CUBe in a trusted network. A POST sent from a page on another host is refused.
 
 ## Repository Structure & Git
 

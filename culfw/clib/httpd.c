@@ -10,9 +10,17 @@
  * send the same bytes again - uIP keeps no copy of sent data. A second
  * request arriving meanwhile gets a 503, answered from flash alone.
  *
- * There is no authentication, as there is none on the tcplink port either.
- * A POST whose Origin header names another host is refused, so a web page
- * elsewhere cannot make the browser reconfigure the device.
+ * Once a password is set, every request needs HTTP Basic authentication as
+ * user "admin". The EEPROM keeps only a salted SHA-256 hash: any EEPROM
+ * byte can be read with the R command over USB or the TCP port. Five wrong
+ * passwords in a row lock the page for 30 seconds. Holding the button
+ * (HTTPD_RESET_PIN) for 10 seconds while running removes the password, as
+ * does the e factory reset.
+ *
+ * This protects the page, not the device: the TCP port takes every command,
+ * W included, without a password, and HTTP carries the password in clear.
+ * A POST whose Origin header names another host is refused as well, so a
+ * web page elsewhere cannot make the browser reconfigure the device.
  */
 
 #include <string.h>
@@ -21,14 +29,31 @@
 #include "board.h"
 #include "uip.h"
 #include "timer.h"
+#include "clock.h"
 #include "fncollection.h"
+#include "sha256.h"
 #include "version.h"
 #include "httpd.h"
+#ifdef HTTPD_RESET_PIN
+#include "led.h"
+#endif
 
 #define RX_SIZE       1024            // request line, headers and body
 #define TX_SIZE       4096            // the complete response
 #define REQ_TIMEOUT   (CLOCK_SECOND * 10)
 #define REBOOT_DELAY  (CLOCK_SECOND * 3)
+
+// EE_HTTPD_AUTH: marker, salt, first bytes of SHA-256(salt | password)
+#define AUTH_SET      0xA5            // any other marker: no password
+#define AUTH_SALT     4
+#define AUTH_HASH     20
+#define AUTH_USER     "admin"
+#define AUTH_PW_MAX   32
+#define AUTH_TRIES    5
+#define AUTH_LOCK     (CLOCK_SECOND * 30)
+
+#define RESET_HOLD    40              // httpd_periodic calls, 4 per second
+#define RESET_BLINK   24
 
 static struct uip_conn *owner;        // the connection being served
 static struct timer req_timer;
@@ -43,6 +68,9 @@ static uint16_t tx_chunk;             // bytes in flight
 
 static uint8_t reboot_pending;
 static struct timer reboot_timer;
+
+static uint8_t auth_fails;
+static struct timer auth_lock;
 
 static const char busy[] =
   "HTTP/1.0 503 Service Unavailable\r\n"
@@ -119,7 +147,8 @@ out_head(const char *refresh_ip)
   out("<title>" BOARD_NAME "</title><style>"
       "body{font-family:sans-serif;max-width:30em;margin:1em auto;padding:0 1em}"
       "label{display:block;margin:.7em 0 .2em}"
-      "input[type=text]{width:100%;box-sizing:border-box;padding:.3em}"
+      "input:not([type=checkbox]){width:100%;box-sizing:border-box;padding:.3em}"
+      "h2{font-size:1.1em;margin-top:1.5em}"
       "button{margin-top:1em;padding:.5em 1em}"
       ".i{color:#666;font-size:.9em}.e{padding:.5em;background:#fdd}"
       "</style></head><body><h1>" BOARD_NAME "</h1>"
@@ -168,7 +197,7 @@ page_config(const char *error)
   out_field("Gateway", 'g', EE_IP4_GATEWAY);             out("\">");
   out_field("NTP server (0.0.0.0: the gateway)", 'N', EE_IP4_NTPSERVER);
   out("\">");
-  out_field("TCP port for FHEM", 'p', 0);
+  out_field("TCP port (CUL protocol)", 'p', 0);
   out_u(eeprom_read_word((uint16_t *)EE_IP4_TCPLINK_PORT));
   out("\">");
   out_field("Time zone, hours from UTC", 'o', 0);
@@ -178,7 +207,22 @@ page_config(const char *error)
   } else {
     out_u(off);
   }
-  out("\"><button>Save and restart</button></form>"
+  out("\"><h2>Password for this page</h2>");
+  if(erb(EE_HTTPD_AUTH) == AUTH_SET)
+    out("<p class=\"i\">User name: " AUTH_USER ". Holding the button on the "
+        "bottom for 10 seconds removes the password.</p>"
+        "<label><input type=\"checkbox\" name=\"x\" value=\"1\"> "
+        "Remove the password</label>");
+  else
+    out("<p class=\"e\">No password is set: anyone on the network can "
+        "change these settings.</p>");
+  out("<label for=\"w\">New password (empty: unchanged)</label>"
+      "<input type=\"password\" id=\"w\" name=\"w\" maxlength=\"32\" "
+      "autocomplete=\"new-password\">"
+      "<label for=\"r\">Repeat the new password</label>"
+      "<input type=\"password\" id=\"r\" name=\"r\" maxlength=\"32\" "
+      "autocomplete=\"new-password\">"
+      "<button>Save and restart</button></form>"
       "<form method=\"post\" action=\"/reboot\">"
       "<button>Restart</button></form></body></html>");
 }
@@ -208,6 +252,18 @@ page_error(const char *status)
   out("</title><p>");
   out(status);
   out("</p>");
+}
+
+static void
+page_unauthorized(void)
+{
+  out("HTTP/1.0 401 Unauthorized\r\n"
+      "WWW-Authenticate: Basic realm=\"" BOARD_NAME "\", charset=\"UTF-8\"\r\n"
+      "Content-Type: text/html; charset=utf-8\r\n"
+      "Cache-Control: no-store\r\nConnection: close\r\n\r\n"
+      "<!DOCTYPE html><title>401 Unauthorized</title>"
+      "<p>401 Unauthorized. Holding the button on the bottom of the device "
+      "for 10 seconds removes the password.</p>");
 }
 
 /* ------------------------------------------------------------------------
@@ -351,6 +407,152 @@ schedule_reboot(void)
   timer_set(&reboot_timer, REBOOT_DELAY);
 }
 
+/* ------------------------------------------------------------------------
+ * Password
+ */
+
+static int8_t
+hexval(char c)
+{
+  if(c >= '0' && c <= '9') return c - '0';
+  c = lower(c);
+  if(c >= 'a' && c <= 'f') return c - 'a' + 10;
+  return -1;
+}
+
+/* Decodes a form value (+ and %XX); returns the length, or -1. */
+static int16_t
+url_decode(const char *v, uint16_t len, char *dst, uint16_t max)
+{
+  uint16_t n = 0;
+  for(uint16_t i = 0; i < len; i++) {
+    char c = v[i];
+    if(c == '+') {
+      c = ' ';
+    } else if(c == '%') {
+      if(i + 2 >= len)                // two hex digits have to follow
+        return -1;
+      int8_t hi = hexval(v[i+1]), lo = hexval(v[i+2]);
+      if(hi < 0 || lo < 0)
+        return -1;
+      c = hi << 4 | lo;
+      i += 2;
+      if(!c)
+        return -1;
+    }
+    if(n >= max)
+      return -1;
+    dst[n++] = c;
+  }
+  return n;
+}
+
+static int8_t
+b64val(char c)
+{
+  if(c >= 'A' && c <= 'Z') return c - 'A';
+  if(c >= 'a' && c <= 'z') return c - 'a' + 26;
+  if(c >= '0' && c <= '9') return c - '0' + 52;
+  if(c == '+') return 62;
+  if(c == '/') return 63;
+  return -1;
+}
+
+/* Decodes base64; returns the length, or -1. */
+static int16_t
+b64_decode(const char *in, uint16_t len, char *dst, uint16_t max)
+{
+  uint16_t n = 0;
+  uint16_t acc = 0;
+  uint8_t bits = 0;
+  for(uint16_t i = 0; i < len && in[i] != '='; i++) {
+    int8_t v = b64val(in[i]);
+    if(v < 0)
+      return -1;
+    acc = acc << 6 | v;
+    bits += 6;
+    if(bits >= 8) {
+      bits -= 8;
+      if(n >= max)
+        return -1;
+      dst[n++] = acc >> bits;
+    }
+  }
+  return n;
+}
+
+static void
+auth_hash(const uint8_t *salt, const char *pw, uint8_t len, uint8_t h[32])
+{
+  sha256_ctx c;
+  sha256_init(&c);
+  sha256_update(&c, salt, AUTH_SALT);
+  sha256_update(&c, pw, len);
+  sha256_final(&c, h);
+}
+
+static void
+auth_store(const char *pw, uint8_t len)
+{
+  uint8_t salt[AUTH_SALT], h[32];
+  uint32_t t = ticks;
+
+  // No RNG on this chip: the uptime in ticks, folded into the old salt.
+  for(uint8_t i = 0; i < AUTH_SALT; i++)
+    salt[i] = erb(EE_HTTPD_AUTH + 1 + i) ^ (uint8_t)(t >> (8 * i));
+  auth_hash(salt, pw, len, h);
+  ew_bytes(EE_HTTPD_AUTH + 1, salt, AUTH_SALT);
+  ew_bytes(EE_HTTPD_AUTH + 1 + AUTH_SALT, h, AUTH_HASH);
+  ewb(EE_HTTPD_AUTH, AUTH_SET);       // last: a torn write leaves no marker
+}
+
+/* 1: the request may proceed. 0: a 401 or 429 has been rendered. */
+static uint8_t
+authorized(const char *hdr_end)
+{
+  if(erb(EE_HTTPD_AUTH) != AUTH_SET)
+    return 1;
+
+  if(auth_fails >= AUTH_TRIES) {
+    if(!timer_expired(&auth_lock)) {
+      page_error("429 Too Many Requests");
+      return 0;
+    }
+    auth_fails = 0;
+  }
+
+  // A browser asks without credentials first; that is not a failed try.
+  const char *v = header("authorization:", hdr_end);
+  if(!v || strncmp(v, "Basic ", 6)) {
+    page_unauthorized();
+    return 0;
+  }
+
+  char cred[sizeof(AUTH_USER) + AUTH_PW_MAX];       // "admin:" + password
+  int16_t n = b64_decode(v + 6, value_len(v) - 6, cred, sizeof(cred));
+  uint8_t diff = 1;
+  if(n >= (int16_t)sizeof(AUTH_USER) &&
+     !memcmp(cred, AUTH_USER ":", sizeof(AUTH_USER))) {
+    uint8_t salt[AUTH_SALT], h[32];
+    for(uint8_t i = 0; i < AUTH_SALT; i++)
+      salt[i] = erb(EE_HTTPD_AUTH + 1 + i);
+    auth_hash(salt, cred + sizeof(AUTH_USER), n - sizeof(AUTH_USER), h);
+    diff = 0;
+    for(uint8_t i = 0; i < AUTH_HASH; i++)
+      diff |= h[i] ^ erb(EE_HTTPD_AUTH + 1 + AUTH_SALT + i);
+  }
+  memset(cred, 0, sizeof(cred));
+
+  if(!diff) {
+    auth_fails = 0;
+    return 1;
+  }
+  if(++auth_fails >= AUTH_TRIES)
+    timer_set(&auth_lock, AUTH_LOCK);
+  page_unauthorized();
+  return 0;
+}
+
 /* Checks the whole form before anything is written; returns the reason
    it was refused, or 0. */
 static const char *
@@ -386,10 +588,32 @@ save(const char *body, uint8_t *dhcp, uint8_t a[4])
     return "Invalid time zone (-12 to 14).";
   off = neg ? -(int8_t)off_abs : (int8_t)off_abs;
 
+  char pw[AUTH_PW_MAX], pw2[AUTH_PW_MAX];
+  int16_t pw_len = 0, pw2_len = 0;
+  v = field(body, 'w', &len);
+  if(v)
+    pw_len = url_decode(v, len, pw, sizeof(pw));
+  v = field(body, 'r', &len);
+  if(v)
+    pw2_len = url_decode(v, len, pw2, sizeof(pw2));
+  if(pw_len < 0 || pw2_len < 0)
+    return "Invalid password (at most 32 characters).";
+  if(pw_len != pw2_len || memcmp(pw, pw2, pw_len))
+    return "The two passwords differ.";
+
   // an unchecked checkbox is not sent at all
+  v = field(body, 'x', &len);
+  uint8_t remove_pw = v && len == 1 && v[0] == '1';
   v = field(body, 'd', &len);
   *dhcp = v && len == 1 && v[0] == '1';
   uint8_t pb[2] = { port & 0xff, port >> 8 };  // eeprom_read_word order
+
+  if(pw_len)
+    auth_store(pw, pw_len);
+  else if(remove_pw)
+    ewb(EE_HTTPD_AUTH, 0);
+  memset(pw, 0, sizeof(pw));
+  memset(pw2, 0, sizeof(pw2));
 
   ewb(EE_USE_DHCP, *dhcp);
   ew_bytes(EE_IP4_ADDR, a, 4);
@@ -427,6 +651,8 @@ handle_request(const char *hdr_end)
 
   if(!post && strncmp(rx, "GET ", 4))
     page_error("405 Method Not Allowed");
+  else if(!authorized(hdr_end))
+    ;                                 // 401 or 429 rendered
   else if(!post)
     root ? page_config(0) : page_error("404 Not Found");
   else if(foreign_origin(hdr_end))
@@ -544,10 +770,46 @@ httpd_appcall(void)
     send_chunk();
 }
 
+#ifdef HTTPD_RESET_PIN
+/* Held for RESET_HOLD calls, the button removes the password; the LED
+   then blinks fast for a few seconds. */
+static void
+reset_button(void)
+{
+  static uint8_t init, held, blink;
+
+  if(!init) {
+    HTTPD_RESET_PIO->PIO_PER   = HTTPD_RESET_PIN;   // a plain input
+    HTTPD_RESET_PIO->PIO_ODR   = HTTPD_RESET_PIN;
+    HTTPD_RESET_PIO->PIO_PPUER = HTTPD_RESET_PIN;
+    init = 1;
+  }
+
+  if(blink) {
+    LED_TOGGLE();
+    if(!--blink)
+      LED_OFF();
+  }
+
+  if(HTTPD_RESET_PIO->PIO_PDSR & HTTPD_RESET_PIN) {  // released
+    held = 0;
+    return;
+  }
+  if(held < RESET_HOLD && ++held == RESET_HOLD) {
+    ewb(EE_HTTPD_AUTH, 0);
+    auth_fails = 0;
+    blink = RESET_BLINK;
+  }
+}
+#endif
+
 /* Called from Ethernet_Task on its periodic timer. */
 void
 httpd_periodic(void)
 {
+#ifdef HTTPD_RESET_PIN
+  reset_button();
+#endif
   if(reboot_pending && timer_expired(&reboot_timer)) {
     reboot_pending = 0;
     prepare_boot(0);

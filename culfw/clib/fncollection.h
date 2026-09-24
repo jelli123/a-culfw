@@ -91,6 +91,20 @@ void do_wdt_enable(uint8_t t);
 # define EE_FS_LAST           (EE_LOGENABLED+1)
 #endif
 
+#ifdef HAS_HTTPD                // web page password: marker, salt, hash
+# ifdef HAS_FS
+#  error "HAS_HTTPD: place EE_HTTPD_AUTH behind EE_FS_LAST first"
+# endif
+# if defined(HAS_MULTI_CC) && NUM_SLOWRF > 2
+#  define EE_HTTPD_AUTH       (EE_CC1100_CFG2+EE_CC1100_CFG_SIZE)
+# elif defined(HAS_MULTI_CC) && NUM_SLOWRF > 1
+#  define EE_HTTPD_AUTH       (EE_CC1100_CFG1+EE_CC1100_CFG_SIZE)
+# else
+#  define EE_HTTPD_AUTH       EE_LCD_LAST
+# endif
+# define EE_HTTPD_AUTH_SIZE   25
+#endif
+
 
 
 extern uint8_t led_mode;
