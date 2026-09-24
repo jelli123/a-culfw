@@ -81,8 +81,8 @@
         "platform": "ststm32",
         "board": "cube",
         "mcu": "at91sam7x256",
-        "version": "1.29.3",
-        "last_build": "2026-09-24 13:25:32",
+        "version": "1.29.14",
+        "last_build": "2026-09-24 21:59:16",
         "artifacts": [
             {
                 "file": "CUBE_BL.bin",
@@ -94,8 +94,8 @@
         "platform": "ststm32",
         "board": "cube",
         "mcu": "at91sam7x256",
-        "version": "1.29.5",
-        "last_build": "2026-09-24 13:26:07",
+        "version": "1.29.15",
+        "last_build": "2026-09-24 21:59:17",
         "artifacts": [
             {
                 "file": "CUBEx4_BL.bin",
