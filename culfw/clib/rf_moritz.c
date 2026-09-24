@@ -1,4 +1,5 @@
 #include <avr/io.h>                     // for _BV, bit_is_set
+#include <avr/wdt.h>                    // for wdt_reset
 #include <stdint.h>                     // for uint8_t, uint32_t
 
 #include "board.h"                      // for CC1100_CS_DDR, etc
@@ -317,9 +318,13 @@ moritz_sendraw(uint8_t *dec, int longPreamble)
   }
 
   if(longPreamble) {
-    /* Send preamble for 1 sec. Keep in mind that waiting for too long may trigger the watchdog (2 seconds on CUL) */
-    for(int i=0;i<10;++i)
+    /* Send preamble for 1 sec. The watchdog (2 seconds) is reset meanwhile:
+     * several commands arriving in one TCP segment are handled in one go,
+     * and two of these sends in a row outlast it. */
+    for(int i=0;i<10;++i) {
+      wdt_reset();
       my_delay_ms(100); //arg is uint_8, so loop
+    }
   }
 
   // send
