@@ -160,7 +160,8 @@ bands allow only a limited duty cycle - in the EU, for instance, 1 % in
 responsible for staying within the rules of the country the device is used in.
 The suspension ends by itself, on a restart, or with "Enforce the limit again".
 Air time sent meanwhile is still taken from the budget, down to 0, so the hour
-after it starts from what was really sent.
+after it starts from what was really sent. While it lasts, the heartbeat on
+LED1 blinks fast.
 
 #### Allowed clients (IP whitelist)
 
@@ -182,9 +183,22 @@ best allowed by network.
 #### Resetting the access protection
 
 Hold the button on the bottom for 10 seconds while the CUBe is running: this
-removes the password and the whitelist, and D1 blinks fast. (Held at power-up,
+removes the password and the whitelist, and all LEDs blink together for six
+seconds - unlike the bootloader, which blinks D1 alone. (Held at power-up,
 the same button starts the bootloader instead.) The `e` factory reset removes
 both as well.
+
+#### LEDs
+
+| LED | Shows |
+|---|---|
+| LED1 | heartbeat, blinking slowly; fast while the duty cycle limit is suspended |
+| LED2 | on once the CUBe has an IP address: DHCP answered, or a fixed address |
+| LED3 | on while USB is connected, dark for a moment when data goes over it |
+
+All three blinking together confirm the reset of the access protection.
+(`HAS_STATUS_LEDS`; `l00` / `l01` / `l02` switch LED1 off, on or back to the
+heartbeat.)
 
 #### Help on the console
 

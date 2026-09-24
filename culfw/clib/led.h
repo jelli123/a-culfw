@@ -32,6 +32,10 @@
 #define LED3_OFF()      HAL_LED_Set(2,LED_off)
 #define LED3_TOGGLE()   HAL_LED_Toggle(2)
 
+// Set while a task shows something on all LEDs at once (the reset
+// confirmation in httpd.c): heartbeat and status LEDs leave them alone.
+extern uint8_t led_hold;
+
 
 #else
 

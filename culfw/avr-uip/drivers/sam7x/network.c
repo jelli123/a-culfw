@@ -198,7 +198,6 @@ void ethernet_process(void) {
 
 			TRACE_INFO("P: Link detected\n\r");
 			linkstate=1;
-			LED2_ON();
 			// Auto Negotiate
 			if (!DM9161_AutoNegotiate(pDm)) {
 

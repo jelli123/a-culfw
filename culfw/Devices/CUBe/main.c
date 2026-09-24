@@ -124,6 +124,11 @@ volatile unsigned int timestamp = 0;
  /// Buffer for storing incoming USB data.
  static unsigned char usbBuffer[DATABUFFERSIZE];
 
+#ifdef HAS_STATUS_LEDS
+ /// Data went over USB since status_leds() last looked.
+ static volatile uint8_t usb_data;
+#endif
+
 //------------------------------------------------------------------------------
 //         Local functions
 //------------------------------------------------------------------------------
@@ -133,21 +138,18 @@ volatile unsigned int timestamp = 0;
 //         Callbacks re-implementation
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
-/// Invoked when the USB device leaves the Suspended state. By default,
-/// configures the LEDs.
+/// Invoked when the USB device leaves the Suspended state.
 //------------------------------------------------------------------------------
 void USBDCallbacks_Resumed(void)
 {
-  LED3_ON();
   USBState = STATE_RESUME;
 }
 
 //------------------------------------------------------------------------------
-/// Invoked when the USB device gets suspended. By default, turns off all LEDs.
+/// Invoked when the USB device gets suspended.
 //------------------------------------------------------------------------------
 void USBDCallbacks_Suspended(void)
 {
-  LED3_OFF();
   USBState = STATE_SUSPEND;
 }
 
@@ -165,6 +167,9 @@ static void UsbDataReceived(unsigned int unused,
     for(unsigned int i=0;i<received;i++) {
       rb_put(&TTY_Rx_Buffer, usbBuffer[i]);
     }
+#ifdef HAS_STATUS_LEDS
+    usb_data = 1;
+#endif
 
       // Check if bytes have been discarded
       if ((received == DATABUFFERSIZE) && (remaining > 0)) {
@@ -186,6 +191,41 @@ static void UsbDataReceived(unsigned int unused,
 }
 
 #include "delay.h"
+
+#ifdef HAS_STATUS_LEDS
+/* LED2: an IP address, from DHCP or a fixed one. LED3: USB configured, dark
+   for a moment on data in either direction (on for good while it flows).
+   LED1, the heartbeat, is clock.c's. */
+static void
+status_leds(void)
+{
+  static uint8_t last, blink;
+
+  if((uint8_t)ticks == last || led_hold)
+    return;
+  last = ticks;
+
+  if(ethernet_ip_ok())
+    LED2_ON();
+  else
+    LED2_OFF();
+
+  if(USBD_GetState() != USBD_STATE_CONFIGURED) {
+    LED3_OFF();
+    blink = 0;
+    return;
+  }
+  if(!blink && usb_data)
+    blink = 12;                       // 6 ticks off, then at least 6 on
+  usb_data = 0;
+  if(blink)
+    blink--;
+  if(blink >= 6)
+    LED3_OFF();
+  else
+    LED3_ON();
+}
+#endif
 
 
 const t_fntab fntab[] = {
@@ -512,7 +552,14 @@ int main(void)
   // Main loop
   while (1) {
 
+#ifdef HAS_STATUS_LEDS
+    if(TTY_Tx_Buffer.nbytes && USB_IsConnected)
+      usb_data = 1;                   // sent by CDC_Task below
+#endif
     CDC_Task();
+#ifdef HAS_STATUS_LEDS
+    status_leds();
+#endif
     #ifdef HAS_UART
     if(!USB_IsConnected)
       uart_task();
@@ -609,7 +656,6 @@ int main(void)
                               DATABUFFERSIZE,
                               (TransferCallback) UsbDataReceived,
                               0);
-        LED3_ON();
         USBState=STATE_RX;
       }
     }

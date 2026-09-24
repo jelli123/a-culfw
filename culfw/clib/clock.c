@@ -40,6 +40,9 @@ uint8_t ir_ticks_thrd = 0;
 
 volatile uint32_t ticks;
 volatile uint8_t  clock_hsec;
+#ifdef USE_HAL
+uint8_t led_hold;
+#endif
 
 // count & compute in the interrupt, else long runnning tasks would block
 // a "minute" task too long
@@ -156,6 +159,11 @@ Minute_Task(void)
   }
   xled_pos &= 15;
 #endif
+#ifdef HAS_STATUS_LEDS
+  // While the duty cycle limit is suspended the heartbeat blinks fast.
+  if(credit_suspend_s && (led_mode & 2) && !led_hold && (ticks & 15) == 0)
+    LED_TOGGLE();
+#endif
 #ifdef HAS_FHT_TF
   // iterate over all TFs
   for(uint8_t i = 0; i < FHT_TF_NUM; i++) {
@@ -212,7 +220,10 @@ Minute_Task(void)
   DHCP_time_handler();
 #endif
 
-#ifndef XLED
+#ifdef HAS_STATUS_LEDS
+  if((led_mode & 2) && !led_hold && !credit_suspend_s)
+    LED_TOGGLE();
+#elif !defined(XLED)
   if(led_mode & 2)
     LED_TOGGLE();
 #endif

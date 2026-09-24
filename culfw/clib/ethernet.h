@@ -9,6 +9,7 @@
 void ethernet_reset(void);
 void ethernet_init(void);
 void Ethernet_Task(void);
+uint8_t ethernet_ip_ok(void);           // DHCP answered, or a fixed address
 extern uint8_t eth_initialized;
 void erip(void *ip, uint8_t *addr);      // EEprom read IP
 

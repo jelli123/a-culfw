@@ -150,6 +150,9 @@
 // and the IP whitelist.
 #define HTTPD_RESET_PIO         AT91C_BASE_PIOA
 #define HTTPD_RESET_PIN         BOOTLOADER_PIN
+// LED1 heartbeat (fast while the 1 % limit is suspended), LED2 IP address,
+// LED3 USB (dark for a moment on data)
+#define HAS_STATUS_LEDS
 #define HAS_HELP                        // ?? and ?<letter> on the console
 
 

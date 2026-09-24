@@ -33,6 +33,7 @@ static struct uip_eth_addr mac;       // static for dhcpc
 uint8_t eth_debug = 0;
 
 static uint8_t dhcp_state;
+static uint8_t ip_ok;                 // DHCP answered, or a fixed address
 
 static void set_eeprom_addr(void);
 static void ip_initialized(void);
@@ -79,12 +80,20 @@ ethernet_init(void)
     network_set_led(0x4A6);// LED A: Link Status  LED B: Blink slow
     dhcpc_init(&mac);
     dhcp_state = PT_WAITING;
+    ip_ok = 0;
 
   } else {
     dhcp_state = PT_ENDED;
     set_eeprom_addr();
+    ip_ok = 1;
 
   }
+}
+
+uint8_t
+ethernet_ip_ok(void)
+{
+  return ip_ok;
 }
 
 void
@@ -292,10 +301,12 @@ ip_initialized(void)
 void
 dhcpc_configured(const struct dhcpc_state *s)
 {
-  if(s == 0) {
+  if(s == 0) {                        // no answer: the stored address
     set_eeprom_addr();
+    ip_ok = 0;
     return;
   }
+  ip_ok = 1;
   ewip(s->ipaddr,         EE_IP4_ADDR);    uip_sethostaddr(s->ipaddr);
   ewip(s->default_router, EE_IP4_GATEWAY); uip_setdraddr(s->default_router);
   ewip(s->netmask,        EE_IP4_NETMASK); uip_setnetmask(s->netmask);

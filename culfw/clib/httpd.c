@@ -1008,7 +1008,9 @@ httpd_appcall(void)
 
 #ifdef HTTPD_RESET_PIN
 /* Held for RESET_HOLD calls, the button removes the password and the IP
-   whitelist; the LED then blinks fast for a few seconds. */
+   whitelist; all LEDs then blink together for a few seconds. led_hold keeps
+   the heartbeat and the status LEDs away meanwhile; afterwards they show
+   their state again by themselves. */
 static void
 reset_button(void)
 {
@@ -1022,9 +1024,11 @@ reset_button(void)
   }
 
   if(blink) {
-    LED_TOGGLE();
-    if(!--blink)
-      LED_OFF();
+    blink--;
+    for(uint8_t i = 0; i < LED_COUNT; i++)
+      HAL_LED_Set(i, blink & 1 ? LED_on : LED_off);
+    if(!blink)
+      led_hold = 0;
   }
 
   if(HTTPD_RESET_PIO->PIO_PDSR & HTTPD_RESET_PIN) {  // released
@@ -1037,6 +1041,7 @@ reset_button(void)
 #ifdef HAS_IP_FILTER
     ipfilter_clear();
 #endif
+    led_hold = 1;
     blink = RESET_BLINK;
   }
 }
