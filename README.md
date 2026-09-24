@@ -212,10 +212,10 @@ heartbeat.)
 
 ## Repository Structure & Git
 
-To keep the repository clean, only the final products in the `binaries/` folder are tracked. Temporary build files are ignored.
-
-**Git Whitelist Principle:**
-Only `.hex`, `.bin` and the `manifest.json` in the `/binaries/` folder are explicitly allowed in the `.gitignore`. All other artifacts in the `.pio/` folder remain local.
+Only the sources are tracked. A build writes its firmware and `manifest.json`
+to `binaries/`, which `.gitignore` keeps local, as it does `.pio/`; builds
+do not commit anything. Released firmware is published as the files of a
+GitHub release, built by `.github/workflows/build_firmware.yml`.
 
 ## Version Numbering
 

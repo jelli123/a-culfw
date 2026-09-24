@@ -48,13 +48,9 @@ test/
 .pio
 .build_number
 
-# Erstmal alles im binaries-Ordner ignorieren
-binaries/*
-
-# Ausnahmen (Whitelist): Diese Dateien explizit erlauben
-!binaries/manifest.json
-!binaries/*.hex
-!binaries/*.bin
+# Gebaute Firmware bleibt lokal; veroeffentlicht wird sie als GitHub-Release
+# (.github/workflows/build_firmware.yml)
+binaries/
 
 # PlatformIO Build-Ordner im culfw-Unterverzeichnis komplett ignorieren
 culfw/.pio/
