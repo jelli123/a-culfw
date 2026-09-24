@@ -129,6 +129,13 @@ installing it with SAM-BA). Hold the button on the bottom while plugging in USB
 pio run -e CUBE_BL -t upload --upload-port /media/$USER/<drive>
 ```
 
+The CUBe firmware serves a configuration page on port 80
+(`culfw/clib/httpd.c`, enabled by `HAS_HTTPD` in its `board.h`): DHCP, IP
+address, netmask, gateway, NTP server, the TCP port for FHEM and the time zone
+- the settings the `Wi*` commands write. Saving validates the whole form first,
+then stores it and restarts the device. There is no password, as there is none
+on the TCP port either; a POST sent from a page on another host is refused.
+
 ## Repository Structure & Git
 
 To keep the repository clean, only the final products in the `binaries/` folder are tracked. Temporary build files are ignored.

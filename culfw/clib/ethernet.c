@@ -10,6 +10,9 @@
 #include "drivers/interfaces/network.h"
 #include "ethernet.h"
 #include "fncollection.h"
+#ifdef HAS_HTTPD
+#include "httpd.h"
+#endif
 #include "led.h"
 #include "mdns_sd.h"
 #include "ntp.h"
@@ -234,6 +237,9 @@ Ethernet_Task(void) {
 	  }
 
 	  interface_periodic();
+#ifdef HAS_HTTPD
+	  httpd_periodic();
+#endif
 	  
      }
      
@@ -268,6 +274,9 @@ ip_initialized(void)
 {
   network_set_led(0x476);// LED A: Link Status  LED B: TX/RX
   tcplink_init();
+#ifdef HAS_HTTPD
+  httpd_init();
+#endif
   ntp_init();
 #ifdef HAS_MDNS
   mdns_init();
@@ -320,6 +329,10 @@ tcp_appcall()
 {
   if(uip_conn->lport == tcplink_port)
     tcplink_appcall();
+#ifdef HAS_HTTPD
+  else if(uip_conn->lport == HTONS(HTTPD_PORT))
+    httpd_appcall();
+#endif
 }
 
 void
