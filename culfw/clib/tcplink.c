@@ -27,7 +27,13 @@ int con_counter;
 void
 tcplink_init(void)
 {
-  tcplink_port = HTONS(eeprom_read_word((uint16_t *)EE_IP4_TCPLINK_PORT));
+  uint16_t port = eeprom_read_word((uint16_t *)EE_IP4_TCPLINK_PORT);
+  if(port == 0 || port == 0xffff) {     // never set: foreign or erased data
+    port = 2323;
+    ewb(EE_IP4_TCPLINK_PORT,     port & 0xff);
+    ewb(EE_IP4_TCPLINK_PORT + 1, port >> 8);
+  }
+  tcplink_port = HTONS(port);
   uip_listen(tcplink_port);
   con_counter = 0;
 }

@@ -37,3 +37,10 @@ Alternative für SAM-BA unter Linux: https://forum.fhem.de/index.php/topic,38404.
 - Bei aktivierten Bootloader blink D1 vier mal pro Sekunde.
 - Die Datei CUBE_BL.bin auf das vom Bootloader bereitgestellte USB-Laufwerk kopieren.
 - Nach erfolgreicher Übetragung startet der Cube neu und D1 blinkt im Sekundentakt.
+
+## Nach dem ersten Flashen
+
+- Die Einstellungen liegen im Dataflash des Cubes. Findet die Firmware dort beim Start keine eigenen Daten, setzt sie alles auf Werkseinstellungen: DHCP an, TCP-Port 2323 (CUL-Protokoll für FHEM), Konfigurationsseite ohne Passwort.
+- War vorher schon eine a-culfw installiert, bleiben deren Einstellungen erhalten, auch solche, die in dieser Version anders belegt sind. Deshalb nach dem ersten Flashen in einer Terminalverbindung einmal „e“ senden (Werkreset, danach startet der Cube neu).
+- Ein TCP-Port 0 oder 65535 wird beim Start automatisch auf 2323 gesetzt.
+- Danach ist die Konfigurationsseite unter http://<IP-Adresse>/ erreichbar. Die IP-Adresse zeigt „Ria“ in der Terminalverbindung; „??“ listet alle Befehle.
