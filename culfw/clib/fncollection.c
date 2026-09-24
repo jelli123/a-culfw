@@ -429,6 +429,18 @@ void
 version(char *in)
 {
   MULTICC_PREFIX();
+#ifdef SAM7
+  // VR: why the processor last started, kept by the reset controller
+  if (in[1] == 'R') {
+    static const char * const type[] = { "power-up", "wake-up", "watchdog",
+                                         "software", "reset pin", "?", "?",
+                                         "?" };
+    DS_P( PSTR("VR ") );
+    DS_P( type[(AT91C_BASE_RSTC->RSTC_RSR >> 8) & 7] );
+    DNL();
+    return;
+  }
+#endif
 #if defined(CUL_HW_REVISION)
   if (in[1] == 'H') {
     DS_P( PSTR(CUL_HW_REVISION) );

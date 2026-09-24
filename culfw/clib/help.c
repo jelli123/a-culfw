@@ -52,7 +52,11 @@ static const char h_R[] PROGMEM = "R<addr> read the EEPROM (hex). Network: Ria a
 static const char h_T[] PROGMEM = "FHT: T<housecode 4><address 2><command 2>[<argument 2>] send (hex)";
 static const char h_t[] PROGMEM = "time since start, in 1/125 s (hex)";
 static const char h_U[] PROGMEM = "Uniroll: U<hex> send";
-static const char h_V[] PROGMEM = "firmware version and board";
+static const char h_V[] PROGMEM = "firmware version and board"
+#ifdef SAM7
+                                  "; VR why it last started (watchdog, software, ...)"
+#endif
+                                  ;
 static const char h_W[] PROGMEM = "W<addr><val> write the EEPROM (hex). Network: Wia / Win / Wig <ip>,\r\n"
                                   "   Wid<0|1> DHCP, Wim<mac>, WiN<ip> NTP server, Wio<hex> NTP offset,\r\n"
                                   "   Wip<port>; they apply after a restart (B00)"
