@@ -870,6 +870,14 @@ uip_process(u8_t flag)
     UIP_LOG("ip: packet shorter than reported in IP header.");
     goto drop;
   }
+#if !UIP_CONF_IPV6
+  /* CVE-2020-13987: a total length below the IP header would make the
+     upper layer lengths computed from it underflow. */
+  if(uip_len < UIP_IPH_LEN) {
+    UIP_LOG("ip: total length below the header size.");
+    goto drop;
+  }
+#endif /* !UIP_CONF_IPV6 */
 
 #if !UIP_CONF_IPV6
   /* Check the fragment flag. */
@@ -1095,6 +1103,12 @@ ip_check_end:
      UDP/IP headers, but let the UDP application do all the hard
      work. If the application sets uip_slen, it has a packet to
      send. */
+  /* CVE-2020-13987: the UDP header has to be in the packet. */
+  if(uip_len < UIP_IPUDPH_LEN) {
+    UIP_STAT(++uip_stat.udp.drop);
+    UIP_LOG("udp: packet shorter than its header.");
+    goto drop;
+  }
 #if UIP_UDP_CHECKSUMS
   uip_len = uip_len - UIP_IPUDPH_LEN;
   uip_appdata = &uip_buf[UIP_LLH_LEN + UIP_IPUDPH_LEN];
@@ -1184,7 +1198,18 @@ ip_check_end:
   UIP_STAT(++uip_stat.tcp.recv);
 
   /* Start of TCP input header processing code. */
-  
+
+  /* CVE-2020-13987: the TCP header, options included, has to be in the
+     packet, or the checksum and the data length computed from its data
+     offset run past it. */
+  if(uip_len < UIP_IPTCPH_LEN ||
+     ((BUF->tcpoffset >> 4) << 2) < UIP_TCPH_LEN ||
+     ((BUF->tcpoffset >> 4) << 2) > uip_len - UIP_IPH_LEN) {
+    UIP_STAT(++uip_stat.tcp.drop);
+    UIP_LOG("tcp: bad header length.");
+    goto drop;
+  }
+
   if(uip_tcpchksum() != 0xffff) {   /* Compute and check the TCP
 				       checksum. */
     UIP_STAT(++uip_stat.tcp.drop);
@@ -1344,7 +1369,8 @@ ip_check_end:
 	++c;
 	/* NOP option. */
       } else if(opt == TCP_OPT_MSS &&
-		uip_buf[UIP_TCPIP_HLEN + UIP_LLH_LEN + 1 + c] == TCP_OPT_MSS_LEN) {
+		uip_buf[UIP_TCPIP_HLEN + UIP_LLH_LEN + 1 + c] == TCP_OPT_MSS_LEN &&
+		c + TCP_OPT_MSS_LEN <= (((BUF->tcpoffset >> 4) - 5) << 2)) {
 	/* An MSS option with the right option length. */
 	tmp16 = ((u16_t)uip_buf[UIP_TCPIP_HLEN + UIP_LLH_LEN + 2 + c] << 8) |
 	  (u16_t)uip_buf[UIP_IPTCPH_LEN + UIP_LLH_LEN + 3 + c];
@@ -1356,7 +1382,12 @@ ip_check_end:
       } else {
 	/* All other options have a length field, so that we easily
 	   can skip past them. */
-	if(uip_buf[UIP_TCPIP_HLEN + UIP_LLH_LEN + 1 + c] == 0) {
+	/* CVE-2020-13988: an option shorter than its own two header bytes
+	   or reaching past the options is malformed. Checked before the
+	   u8_t c is advanced, so it cannot wrap. */
+	if(uip_buf[UIP_TCPIP_HLEN + UIP_LLH_LEN + 1 + c] < 2 ||
+	   uip_buf[UIP_TCPIP_HLEN + UIP_LLH_LEN + 1 + c] >
+	   (((BUF->tcpoffset >> 4) - 5) << 2) - c) {
 	  /* If the length field is zero, the options are malformed
 	     and we don't process them further. */
 	  break;
@@ -1516,7 +1547,8 @@ ip_check_end:
 	    ++c;
 	    /* NOP option. */
 	  } else if(opt == TCP_OPT_MSS &&
-		    uip_buf[UIP_TCPIP_HLEN + UIP_LLH_LEN + 1 + c] == TCP_OPT_MSS_LEN) {
+		    uip_buf[UIP_TCPIP_HLEN + UIP_LLH_LEN + 1 + c] == TCP_OPT_MSS_LEN &&
+		    c + TCP_OPT_MSS_LEN <= (((BUF->tcpoffset >> 4) - 5) << 2)) {
 	    /* An MSS option with the right option length. */
 	    tmp16 = (uip_buf[UIP_TCPIP_HLEN + UIP_LLH_LEN + 2 + c] << 8) |
 	      uip_buf[UIP_TCPIP_HLEN + UIP_LLH_LEN + 3 + c];
@@ -1528,7 +1560,10 @@ ip_check_end:
 	  } else {
 	    /* All other options have a length field, so that we easily
 	       can skip past them. */
-	    if(uip_buf[UIP_TCPIP_HLEN + UIP_LLH_LEN + 1 + c] == 0) {
+	    /* CVE-2020-13988, as above. */
+	    if(uip_buf[UIP_TCPIP_HLEN + UIP_LLH_LEN + 1 + c] < 2 ||
+	       uip_buf[UIP_TCPIP_HLEN + UIP_LLH_LEN + 1 + c] >
+	       (((BUF->tcpoffset >> 4) - 5) << 2) - c) {
 	      /* If the length field is zero, the options are malformed
 		 and we don't process them further. */
 	      break;
@@ -1604,8 +1639,13 @@ ip_check_end:
     } else {
       uip_urglen = 0;
 #else /* UIP_URGDATA > 0 */
-      uip_appdata = ((char *)uip_appdata) + ((BUF->urgp[0] << 8) | BUF->urgp[1]);
-      uip_len -= (BUF->urgp[0] << 8) | BUF->urgp[1];
+      /* CVE-2020-17437: the urgent pointer comes from the peer; it may
+         not skip past the data in this segment. */
+      tmp16 = (BUF->urgp[0] << 8) | BUF->urgp[1];
+      if(tmp16 > uip_len)
+        tmp16 = uip_len;
+      uip_appdata = ((char *)uip_appdata) + tmp16;
+      uip_len -= tmp16;
 #endif /* UIP_URGDATA > 0 */
     }
 
