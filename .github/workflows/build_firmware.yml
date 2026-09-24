@@ -61,7 +61,7 @@ jobs:
             binaries/manifest.json
           if-no-files-found: error
 
-  # The PlatformIO job above covers four devices. Everything else in
+  # The PlatformIO job above covers five devices. Everything else in
   # culfw/Devices/ is built only by its own makefile, and nothing checked those
   # for years — long enough for CUNO to end up 300 bytes over its RAM without
   # anyone noticing. This job builds every one of them on every push.

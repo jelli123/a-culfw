@@ -22,8 +22,9 @@ Currently, the following environments are defined:
 1.  **nanoCUL868 / nanoCUL433** (ATmega328P)
 2.  **CUL_V3** (ATmega32U4 with native USB)
 3.  **MapleCUNx4_W5100_BL / MapleCUNx4_W5500_BL** (STM32F103CB, Quad-CC1101, Ethernet)
+4.  **CUNO** (ATmega644P, ENC28J60 Ethernet; one image for 868 and 433 MHz)
 
-Every other device in `culfw/Devices/` — COC, CUN, CUNO/CUNO2, CUBe, SCC,
+Every other device in `culfw/Devices/` — COC, CUN, CUNO2, CUBe, SCC,
 megaCUL, miniCUL, CUL-Arduino and the rest — is built with its own `makefile`,
 not with PlatformIO.
 
@@ -37,17 +38,18 @@ measurably between the two.
 
 ## Generating Firmware (Build)
 
-By default, `pio run` builds the three AVR targets listed in `default_envs`. The MapleCUN environments must be selected explicitly.
+By default, `pio run` builds the four AVR targets listed in `default_envs`. The MapleCUN environments must be selected explicitly.
 
 ### Build Commands in the Terminal
 
 ```bash
-# Build the default AVR targets (CUL_V3, nanoCUL868, nanoCUL433)
+# Build the default AVR targets (CUL_V3, nanoCUL868, nanoCUL433, CUNO)
 pio run
 
 # Build one environment explicitly
 pio run -e nanoCUL868
 pio run -e MapleCUNx4_W5500_BL
+pio run -e CUNO
 ```
 
 The MapleCUN environments need an **x86_64** host: on linux_aarch64 PlatformIO
@@ -94,6 +96,18 @@ The CUL V3 must be in bootloader mode.
   dfu-programmer atmega32u4 flash ../binaries/CUL_V3.hex
   dfu-programmer atmega32u4 reset
   ```
+
+### 3. CUNO (ATmega644P)
+The CUNO carries an AVRProg-compatible (avr109) bootloader in the top 2 KiB of
+its flash and is flashed over its serial port at 38400 baud. The bootloader
+only runs when PD3 is pulled to ground at reset (START_SIMPLE in
+Bootloader/main.c). The `B01` command does not help here: CUNO.c does not evaluate the
+EEPROM flag it sets, so it only resets the device. Then:
+```bash
+avrdude -p atmega644p -c avr109 -P /dev/ttyUSB0 -b 38400 -U flash:w:../binaries/CUNO.hex:i
+# or
+pio run -e CUNO -t upload --upload-port /dev/ttyUSB0
+```
 
 ## Repository Structure & Git
 
