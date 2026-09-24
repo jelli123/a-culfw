@@ -89,5 +89,18 @@
                 "type": "ota"
             }
         ]
+    },
+    "CUBEx4_BL": {
+        "platform": "ststm32",
+        "board": "cube",
+        "mcu": "at91sam7x256",
+        "version": "1.29.5",
+        "last_build": "2026-09-24 13:26:07",
+        "artifacts": [
+            {
+                "file": "CUBEx4_BL.bin",
+                "type": "ota"
+            }
+        ]
     }
 }
