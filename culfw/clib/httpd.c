@@ -189,7 +189,12 @@ out_header(const char *status)
       "Cache-Control: no-store\r\nConnection: close\r\n\r\n");
 }
 
-/* refresh_ip: 0 no reload, "" this page after 10 s, else that address */
+/* refresh_ip: 0 no reload, "" this page after 10 s, else that address.
+   Used by the pages answering a POST that restarts the device; they also
+   put / into the address bar at once. Otherwise reloading re-sends the
+   POST: after the restart, with a password set, that was a 401, the
+   browser asking for the password and sending the form again with it -
+   and the device saving and restarting again. */
 static void
 out_head(const char *refresh_ip)
 {
@@ -201,7 +206,7 @@ out_head(const char *refresh_ip)
       out("http://");
       out(refresh_ip);
     }
-    out("/\">");
+    out("/\"><script>history.replaceState(null,'','/')</script>");
   }
   out("<title>" BOARD_NAME "</title><style>"
       "body{font-family:sans-serif;max-width:30em;margin:1em auto;padding:0 1em}"
@@ -601,7 +606,7 @@ static void
 page_restart(const char *new_ip)
 {
   out_header("200 OK");
-  out_head(new_ip);
+  out_head(new_ip ? new_ip : "");     // DHCP: the same address, most likely
   out("<p>Restarting&hellip;</p>");
   if(new_ip) {
     out("<p>The device will answer at <a href=\"http://");
