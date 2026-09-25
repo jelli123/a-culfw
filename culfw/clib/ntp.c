@@ -10,12 +10,16 @@
 #include "uip.h"
 #include "uip_arp.h"            // uip_arp_out;
 #include "stringfunc.h"                 // for fromhex
+#ifdef DHCPC_NTP
+#include "apps/dhcpc/dhcpc.h"          // dhcpc_ntp_server
+#endif
 
 // Time of last sync.
 ntp_time_t        ntp_sec = 3461476149U; // 2009-09-09 09:09:09 (GMT)
 uint8_t       ntp_hsec;
  int8_t       ntp_gmtoff;
 uint8_t       ntp_synced;               // an answer came since the start
+uint8_t       ntp_source;               // NTP_FROM_*: where the server came from
 struct uip_udp_conn *ntp_conn = 0;
 
 ////////////////////////////////
@@ -33,9 +37,20 @@ ntp_init(void)
   uip_ipaddr_t ipaddr;
 
   ntp_gmtoff = erb(EE_IP4_NTPOFFSET);
+  // the server set, else the one DHCP names (option 42), else the gateway
   erip(ipaddr, EE_IP4_NTPSERVER);
-  if(ipaddr[0] == 0 && ipaddr[1] == 0)
+  ntp_source = NTP_FROM_SETTING;
+#ifdef DHCPC_NTP
+  const u16_t *d = dhcpc_ntp_server();
+  if(ipaddr[0] == 0 && ipaddr[1] == 0 && d) {
+    uip_ipaddr_copy(ipaddr, d);
+    ntp_source = NTP_FROM_DHCP;
+  }
+#endif
+  if(ipaddr[0] == 0 && ipaddr[1] == 0) {
     erip(ipaddr, EE_IP4_GATEWAY);
+    ntp_source = NTP_FROM_GATEWAY;
+  }
   ntp_conn = uip_udp_new(&ipaddr, HTONS(NTP_PORT));
   if(ntp_conn == NULL)
     return;

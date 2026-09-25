@@ -90,6 +90,7 @@ struct dhcp_msg {
 #define DHCP_OPTION_DNS_SERVER    6
 #define DHCP_OPTION_HOSTNAME     12
 #define DHCP_OPTION_DOMAIN       15
+#define DHCP_OPTION_NTP_SERVER   42
 #define DHCP_OPTION_REQ_IPADDR   50
 #define DHCP_OPTION_LEASE_TIME   51
 #define DHCP_OPTION_MSG_TYPE     53
@@ -99,6 +100,14 @@ struct dhcp_msg {
 
 static const u8_t xid[4] = {0xad, 0xde, 0x12, 0x23};
 static const u8_t magic_cookie[4] = {99, 130, 83, 99};
+
+#ifdef DHCPC_NTP
+const u16_t *
+dhcpc_ntp_server(void)
+{
+  return s.ntpaddr[0] || s.ntpaddr[1] ? s.ntpaddr : 0;
+}
+#endif
 
 #ifdef DHCPC_HOSTNAME
 /* Name and domain from the server's answer, if it sent them. */
@@ -159,17 +168,19 @@ static u8_t *
 add_req_options(u8_t *optptr)
 {
   *optptr++ = DHCP_OPTION_REQ_LIST;
-#ifdef DHCPC_HOSTNAME
-  *optptr++ = 5;
-#else
-  *optptr++ = 3;
-#endif
+  u8_t *count = optptr++;
+  *count = 3;
   *optptr++ = DHCP_OPTION_SUBNET_MASK;
   *optptr++ = DHCP_OPTION_ROUTER;
   *optptr++ = DHCP_OPTION_DNS_SERVER;
 #ifdef DHCPC_HOSTNAME
   *optptr++ = DHCP_OPTION_HOSTNAME;
   *optptr++ = DHCP_OPTION_DOMAIN;
+  *count += 2;
+#endif
+#ifdef DHCPC_NTP
+  *optptr++ = DHCP_OPTION_NTP_SERVER;
+  *count += 1;
 #endif
   return optptr;
 }
@@ -238,7 +249,9 @@ send_request(void)
   end = add_req_ipaddr(end);
 #ifdef DHCPC_HOSTNAME
   end = add_hostname(end);
-  end = add_req_options(end);
+#endif
+#if defined(DHCPC_HOSTNAME) || defined(DHCPC_NTP)
+  end = add_req_options(end);         // the ACK carries what is asked for
 #endif
   end = add_end(end);
   
@@ -271,6 +284,12 @@ parse_options(u8_t *optptr, int len)
     case DHCP_OPTION_LEASE_TIME:
       memcpy(s.lease_time, optptr + 2, 4);
       break;
+#ifdef DHCPC_NTP
+    case DHCP_OPTION_NTP_SERVER:        // the first of the list
+      if(optptr[1] >= 4)
+        memcpy(s.ntpaddr, optptr + 2, 4);
+      break;
+#endif
 #ifdef DHCPC_HOSTNAME
     case DHCP_OPTION_HOSTNAME:
       copy_name(dhcp_name, optptr);

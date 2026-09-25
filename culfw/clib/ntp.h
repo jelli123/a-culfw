@@ -55,6 +55,10 @@ extern ntp_time_t   ntp_sec;
 extern uint8_t  ntp_hsec;
 extern  int8_t  ntp_gmtoff;
 extern uint8_t  ntp_synced;
+extern uint8_t  ntp_source;
+#define NTP_FROM_SETTING 1
+#define NTP_FROM_DHCP    2
+#define NTP_FROM_GATEWAY 3
 extern struct uip_udp_conn *ntp_conn;
 
 #define NTP_PORT 123

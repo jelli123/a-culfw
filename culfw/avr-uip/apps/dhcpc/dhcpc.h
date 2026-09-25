@@ -52,6 +52,9 @@ struct dhcpc_state {
   u16_t netmask[2];
   u16_t dnsaddr[2];
   u16_t default_router[2];
+#ifdef DHCPC_NTP
+  u16_t ntpaddr[2];                    // option 42, 0 if none
+#endif
 };
 
 void dhcpc_init(struct uip_eth_addr *mac_addr);
@@ -60,6 +63,10 @@ void dhcpc_request(void);
 PT_THREAD(handle_dhcp(void));
 
 void dhcpc_configured(const struct dhcpc_state *s);
+
+#ifdef DHCPC_NTP
+const u16_t *dhcpc_ntp_server(void);       // 0 unless the server sent one
+#endif
 
 #ifdef DHCPC_HOSTNAME
 #define DHCPC_NAME_MAX 32
