@@ -242,6 +242,78 @@ out_time(void)
 }
 #endif
 
+/* n / 10^decimals, with that many decimals */
+static void
+out_fixed(uint32_t n, uint8_t decimals)
+{
+  uint16_t div = 1;
+  for(uint8_t i = 0; i < decimals; i++)
+    div *= 10;
+  out_u(n / div);
+  out(".");
+  for(uint16_t d = div / 10; d; d /= 10)
+    out_u(n / d % 10);
+}
+
+#ifdef SAM7
+/* from CUBE*_flash.lds */
+extern char _sfixed[], _efixed[], _srelocate[], _erelocate[], _ezero[];
+extern char _flash_end[], _sstack[];
+
+static void
+out_kb(uint32_t bytes)
+{
+  out_fixed((bytes * 10 + 512) / 1024, 1);
+  out(" KB");
+}
+
+/* The image is .fixed plus the initial values of .relocate behind it. */
+static void
+out_memory(void)
+{
+  uint32_t area = _flash_end - _sfixed;
+  uint32_t image = (_efixed - _sfixed) + (_erelocate - _srelocate);
+  uint32_t ram = _sstack - _srelocate;
+  uint32_t ram_static = _ezero - _srelocate;
+
+  out("<h2>Memory</h2><table><tr><td>Flash</td><td>firmware ");
+  out_kb(image);
+  out(" of ");
+  out_kb(area);
+  out(", free ");
+  out_kb(area - image);
+  out("</td></tr>");
+#ifdef USE_DATAFLASH
+  uint16_t pages, page_size, reserved;
+  const char *name = dataflash_info(&pages, &page_size, &reserved);
+  out("<tr><td>Dataflash</td><td>");
+  if(!name) {
+    out("none found");
+  } else {
+    out(name);
+    out(", ");
+    out_kb((uint32_t)pages * page_size);
+    out(" (");
+    out_u(pages);
+    out(" pages of ");
+    out_u(page_size);
+    out(" bytes); pages 0-");
+    out_u(reserved - 1);
+    out(" set aside, the settings in page ");
+    out_u(reserved - 1);
+    out(", free ");
+    out_kb((uint32_t)(pages - reserved) * page_size);
+  }
+  out("</td></tr>");
+#endif
+  out("<tr><td>RAM</td><td>static ");
+  out_kb(ram_static);
+  out(" of ");
+  out_kb(ram);
+  out(", the rest is stack</td></tr></table>");
+}
+#endif
+
 #ifdef USE_RF_MODE
 #ifdef HAS_MULTI_CC
 #define RADIO_COUNT HAS_MULTI_CC
@@ -264,19 +336,6 @@ radio_present(uint8_t i)
 #else
   return i < RADIO_COUNT;
 #endif
-}
-
-/* n / 10^decimals, with that many decimals */
-static void
-out_fixed(uint32_t n, uint8_t decimals)
-{
-  uint16_t div = 1;
-  for(uint8_t i = 0; i < decimals; i++)
-    div *= 10;
-  out_u(n / div);
-  out(".");
-  for(uint16_t d = div / 10; d; d /= 10)
-    out_u(n / d % 10);
 }
 
 static const char *
@@ -386,8 +445,11 @@ page_config(const char *error)
 #ifdef USE_RF_MODE
   out_radios();
   out_duty();
-  out("<h2>Network</h2>");
 #endif
+#ifdef SAM7
+  out_memory();
+#endif
+  out("<h2>Network</h2>");
   out("<form method=\"post\" action=\"/\">"
       "<label><input type=\"checkbox\" name=\"d\" value=\"1\"");
   if(erb(EE_USE_DHCP))

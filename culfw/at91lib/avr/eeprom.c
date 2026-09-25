@@ -699,6 +699,22 @@ int16_t flash_init(void) {
 #endif
 }
 
+#ifdef USE_DATAFLASH
+/* The dataflash flash_init() found, for the status page: its name, page
+   count and page size, and how many pages from 0 on are set aside - the
+   settings live in FLASHPAGE. 0 when none was found. */
+const char *
+dataflash_info(uint16_t *pages, uint16_t *page_size, uint16_t *reserved)
+{
+	if(!at45.pDesc)
+		return 0;
+	*pages = AT45_PageNumber(&at45);
+	*page_size = AT45_PageSize(&at45);
+	*reserved = FLASHPAGE + 1;
+	return at45.pDesc->name;
+}
+#endif
+
 void dump_flash(void) {
 
 

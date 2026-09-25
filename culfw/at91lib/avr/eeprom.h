@@ -21,4 +21,9 @@ uint32_t flash_serial(void);
 
 void dump_flash(void);
 
+#ifdef USE_DATAFLASH
+const char *dataflash_info(uint16_t *pages, uint16_t *page_size,
+                           uint16_t *reserved);
+#endif
+
 #endif /* __PGMSPACE_H_ */

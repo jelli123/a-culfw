@@ -110,6 +110,9 @@ SECTIONS
     _bss_end = . ;
     
     _sstack = 0x210000;
+
+    /* end of the application area, for the free flash on the status page */
+    _flash_end = ORIGIN(flash) + LENGTH(flash);
 }
 end = .;
 
