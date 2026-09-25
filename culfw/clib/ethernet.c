@@ -16,6 +16,9 @@
 #ifdef HAS_IP_FILTER
 #include "ipfilter.h"
 #endif
+#ifdef HAS_HOSTNAME
+#include "hostname.h"
+#endif
 #include "led.h"
 #include "mdns_sd.h"
 #include "ntp.h"
@@ -69,6 +72,9 @@ ethernet_init(void)
   uip_init();
 #ifdef HAS_IP_FILTER
   ipfilter_load();
+#endif
+#ifdef HAS_HOSTNAME
+  hostname_load();                    // after the MAC: the default uses it
 #endif
   ntp_conn = 0;
 
@@ -299,6 +305,14 @@ ip_initialized(void)
   mdns_init();
 #endif
 }
+
+#ifdef DHCPC_HOSTNAME
+const char *
+dhcpc_hostname(void)
+{
+  return hostname_get();
+}
+#endif
 
 void
 dhcpc_configured(const struct dhcpc_state *s)

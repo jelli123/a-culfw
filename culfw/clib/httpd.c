@@ -49,6 +49,10 @@
 #ifdef HAS_FW_UPDATE
 #include "fwupdate.h"
 #endif
+#ifdef HAS_HOSTNAME
+#include "hostname.h"
+#include "apps/dhcpc/dhcpc.h"
+#endif
 #ifdef USE_RF_MODE
 #include "cc1100.h"
 #include "fband.h"
@@ -95,6 +99,13 @@ static struct timer reboot_timer;
 
 static uint8_t auth_fails;
 static struct timer auth_lock;
+
+/* Basic authentication has no logout: the browser keeps sending what it
+   was given. After "Log out", the next request with credentials from that
+   address gets a 401 once, whatever it carries; the browser then drops
+   them and asks again. */
+static uint8_t logout_pending;
+static uint16_t logout_ip[2];
 
 #ifdef HAS_FW_UPDATE
 static uint8_t uploading;             // the owner's body goes to fwupdate
@@ -221,7 +232,14 @@ out_head(const char *refresh_ip)
       "<p class=\"i\">" FW_NAME " " VERSION " &middot; " BOARD_ID_STR
       "<br>MAC ");
   out_mac();
+#ifdef HAS_HOSTNAME
+  out(" &middot; ");
+  out(hostname_get());
+#endif
   out("</p>");
+  if(refresh_ip == 0 && erb(EE_HTTPD_AUTH) == AUTH_SET)
+    out("<form method=\"post\" action=\"/logout\">"
+        "<button>Log out</button></form>");
 }
 
 static void
@@ -539,6 +557,28 @@ page_config(const char *error)
   if(erb(EE_USE_DHCP))
     out(" checked");
   out("> DHCP (the addresses below are then the last lease)</label>");
+#ifdef HAS_HOSTNAME
+  out_field("Host name (letters, digits, '-'; empty: the default)", 'h', 0);
+  out(hostname_get());
+  out("\" maxlength=\"23\">");
+  if(erb(EE_USE_DHCP)) {
+    const char *dn = dhcpc_assigned_name(), *dd = dhcpc_assigned_domain();
+    out("<p class=\"i\">Sent to the DHCP server, which lists the device by "
+        "it. ");
+    if(*dn || *dd) {
+      out("The server answered with ");
+      out(*dn ? dn : hostname_get());
+      if(*dd) {
+        out(".");
+        out(dd);
+      }
+      out(".");
+    } else {
+      out("The server sent back no name or domain.");
+    }
+    out("</p>");
+  }
+#endif
   out_field("IP address", 'a', EE_IP4_ADDR);             out("\">");
   out_field("Netmask", 'n', EE_IP4_NETMASK);             out("\">");
   out_field("Gateway", 'g', EE_IP4_GATEWAY);             out("\">");
@@ -909,6 +949,11 @@ authorized(const char *hdr_end)
     page_unauthorized();
     return 0;
   }
+  if(logout_pending && !memcmp(logout_ip, uip_conn->ripaddr, 4)) {
+    logout_pending = 0;               // not a failed try either
+    page_unauthorized();
+    return 0;
+  }
 
   char cred[sizeof(AUTH_USER) + AUTH_PW_MAX];       // "admin:" + password
   int16_t n = b64_decode(v + 6, value_len(v) - 6, cred, sizeof(cred));
@@ -1000,6 +1045,19 @@ save(const char *body, uint8_t *dhcp, uint8_t a[4])
   }
 #endif
 
+#ifdef HAS_HOSTNAME
+  // a request without the field leaves the name alone; empty: the default
+  char hn[EE_HOSTNAME_SIZE];
+  int16_t hn_len = -1;
+  const char *hv = field(body, 'h', &len);
+  if(hv) {
+    hn_len = url_decode(hv, len, hn, sizeof(hn) - 1);
+    if(hn_len < 0 || (hn_len && !hostname_valid(hn, hn_len)))
+      return "Invalid host name (up to 23 letters, digits and '-', not "
+             "first or last).";
+  }
+#endif
+
   // an unchecked checkbox is not sent at all
   v = field(body, 'x', &len);
   uint8_t remove_pw = v && len == 1 && v[0] == '1';
@@ -1014,6 +1072,10 @@ save(const char *body, uint8_t *dhcp, uint8_t a[4])
 #ifdef HAS_IP_FILTER
   if(fv)
     ipfilter_store(fl, fl_n);
+#endif
+#ifdef HAS_HOSTNAME
+  if(hn_len >= 0)
+    hostname_store(hn, hn_len);
 #endif
   memset(pw, 0, sizeof(pw));
   memset(pw2, 0, sizeof(pw2));
@@ -1203,7 +1265,18 @@ handle_request(const char *hdr_end)
   else if(!strncmp(path, "/install ", 9))
     handle_install();
 #endif
-  else if(!strncmp(path, "/reboot ", 8)) {
+  else if(!strncmp(path, "/logout ", 8)) {
+    memcpy(logout_ip, uip_conn->ripaddr, 4);
+    logout_pending = erb(EE_HTTPD_AUTH) == AUTH_SET;
+    out_header("200 OK");
+    out("<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        "<title>" BOARD_NAME "</title>"
+        "<script>history.replaceState(null,'','/')</script></head><body>"
+        "<p>Logged out. <a href=\"/\">Log in again</a></p>"
+        "<p style=\"color:#666\">Some browsers ask for the password only "
+        "after they have been closed.</p></body></html>");
+  } else if(!strncmp(path, "/reboot ", 8)) {
     page_restart(0);
     schedule_reboot();
   } else

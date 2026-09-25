@@ -113,6 +113,20 @@ void do_wdt_enable(uint8_t t);
 # define EE_IP_FILTER_SIZE    21
 #endif
 
+#ifdef HAS_HOSTNAME             // up to 23 characters and a NUL
+# ifndef HAS_IP_FILTER
+#  error "HAS_HOSTNAME is placed behind EE_IP_FILTER"
+# endif
+# define EE_HOSTNAME          (EE_IP_FILTER+EE_IP_FILTER_SIZE)
+# define EE_HOSTNAME_SIZE     24
+/* On the CUBEx4 this reaches into EE_DUDETTE_PUBL (217). The ARM devices
+   take their MAC from the flash serial and never use the EE_DUDETTE_*
+   bytes; on any other device the overlap would be a bug. */
+# ifndef ARM
+#  error "HAS_HOSTNAME: check EE_HOSTNAME against EE_DUDETTE_PUBL first"
+# endif
+#endif
+
 
 
 extern uint8_t led_mode;

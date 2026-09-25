@@ -147,6 +147,17 @@ The page can be protected with a password (HTTP Basic authentication, user
 `admin`), set on the page itself. The EEPROM keeps only a salted SHA-256 hash;
 five wrong passwords lock the page for 30 seconds.
 
+With a password set, the page has a "Log out" button. Basic authentication
+itself has no logout - the browser keeps sending the password - so the CUBe
+answers the next request from that computer with a 401 once, and the browser
+asks for the password again. (Some browsers do so only after being closed.)
+
+The host name (default `CUBe-` plus the last three MAC bytes) is set on the
+page or with `Wih<name>` (`Wih` alone: the default), read with `Rih`: up to 23
+letters, digits and `-`. With DHCP the CUBe sends it to the DHCP server
+(option 12), so the router lists it under that name, and the page shows the
+name and domain the server answered with.
+
 The password protects this page, not the device: the TCP port accepts every
 command without one, and plain HTTP sends the password unencrypted. A POST sent
 from a page on another host is refused.

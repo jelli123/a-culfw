@@ -61,6 +61,13 @@ PT_THREAD(handle_dhcp(void));
 
 void dhcpc_configured(const struct dhcpc_state *s);
 
+#ifdef DHCPC_HOSTNAME
+#define DHCPC_NAME_MAX 32
+const char *dhcpc_hostname(void);          // supplied by the application
+const char *dhcpc_assigned_name(void);     // "" unless the server sent one
+const char *dhcpc_assigned_domain(void);
+#endif
+
 typedef struct dhcpc_state uip_udp_appstate_t;
 
 #endif /* __DHCPC_H__ */

@@ -88,6 +88,8 @@ struct dhcp_msg {
 #define DHCP_OPTION_SUBNET_MASK   1
 #define DHCP_OPTION_ROUTER        3
 #define DHCP_OPTION_DNS_SERVER    6
+#define DHCP_OPTION_HOSTNAME     12
+#define DHCP_OPTION_DOMAIN       15
 #define DHCP_OPTION_REQ_IPADDR   50
 #define DHCP_OPTION_LEASE_TIME   51
 #define DHCP_OPTION_MSG_TYPE     53
@@ -97,6 +99,34 @@ struct dhcp_msg {
 
 static const u8_t xid[4] = {0xad, 0xde, 0x12, 0x23};
 static const u8_t magic_cookie[4] = {99, 130, 83, 99};
+
+#ifdef DHCPC_HOSTNAME
+/* Name and domain from the server's answer, if it sent them. */
+static char dhcp_name[DHCPC_NAME_MAX], dhcp_domain[DHCPC_NAME_MAX];
+
+const char *dhcpc_assigned_name(void)   { return dhcp_name; }
+const char *dhcpc_assigned_domain(void) { return dhcp_domain; }
+
+/* Option 12: the name the router is to list the device by. */
+static u8_t *
+add_hostname(u8_t *optptr)
+{
+  const char *n = dhcpc_hostname();
+  u8_t len = strlen(n);
+  *optptr++ = DHCP_OPTION_HOSTNAME;
+  *optptr++ = len;
+  memcpy(optptr, n, len);
+  return optptr + len;
+}
+
+static void
+copy_name(char *dst, const u8_t *opt)
+{
+  u8_t len = opt[1] < DHCPC_NAME_MAX - 1 ? opt[1] : DHCPC_NAME_MAX - 1;
+  memcpy(dst, opt + 2, len);
+  dst[len] = 0;
+}
+#endif
 /*---------------------------------------------------------------------------*/
 static u8_t *
 add_msg_type(u8_t *optptr, u8_t type)
@@ -129,10 +159,18 @@ static u8_t *
 add_req_options(u8_t *optptr)
 {
   *optptr++ = DHCP_OPTION_REQ_LIST;
+#ifdef DHCPC_HOSTNAME
+  *optptr++ = 5;
+#else
   *optptr++ = 3;
+#endif
   *optptr++ = DHCP_OPTION_SUBNET_MASK;
   *optptr++ = DHCP_OPTION_ROUTER;
   *optptr++ = DHCP_OPTION_DNS_SERVER;
+#ifdef DHCPC_HOSTNAME
+  *optptr++ = DHCP_OPTION_HOSTNAME;
+  *optptr++ = DHCP_OPTION_DOMAIN;
+#endif
   return optptr;
 }
 /*---------------------------------------------------------------------------*/
@@ -179,6 +217,9 @@ send_discover(void)
 
   end = add_msg_type(&m->options[4], DHCPDISCOVER);
   end = add_req_options(end);
+#ifdef DHCPC_HOSTNAME
+  end = add_hostname(end);
+#endif
   end = add_end(end);
 
   uip_send(uip_appdata, end - (u8_t *)uip_appdata);
@@ -195,6 +236,10 @@ send_request(void)
   end = add_msg_type(&m->options[4], DHCPREQUEST);
   end = add_server_id(end);
   end = add_req_ipaddr(end);
+#ifdef DHCPC_HOSTNAME
+  end = add_hostname(end);
+  end = add_req_options(end);
+#endif
   end = add_end(end);
   
   uip_send(uip_appdata, end - (u8_t *)uip_appdata);
@@ -226,6 +271,14 @@ parse_options(u8_t *optptr, int len)
     case DHCP_OPTION_LEASE_TIME:
       memcpy(s.lease_time, optptr + 2, 4);
       break;
+#ifdef DHCPC_HOSTNAME
+    case DHCP_OPTION_HOSTNAME:
+      copy_name(dhcp_name, optptr);
+      break;
+    case DHCP_OPTION_DOMAIN:
+      copy_name(dhcp_domain, optptr);
+      break;
+#endif
     case DHCP_OPTION_END:
       return type;
     }

@@ -146,6 +146,8 @@
 #define HAS_NTP                 1       // undef or define...1
 #define HAS_HTTPD                       // configuration page on port 80
 #define HAS_IP_FILTER                   // whitelist of senders, Wif / page
+#define HAS_HOSTNAME                    // sent to the DHCP server, Wih / page
+#define DHCPC_HOSTNAME                  // avr-uip dhcpc: option 12 and 15
 // Firmware update from the page (clib/fwupdate.c): only the images behind
 // the bootloader, which stays untouched and remains the way back. An upload
 // has to carry the same image id.

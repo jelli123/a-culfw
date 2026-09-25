@@ -40,6 +40,9 @@
 #ifdef HAS_IP_FILTER
 #include "ipfilter.h"                   // for ipfilter_read, ipfilter_write
 #endif
+#ifdef HAS_HOSTNAME
+#include "hostname.h"                   // for hostname_read, hostname_write
+#endif
 #include "fswrapper.h"                  // for fs
 #include "mysleep.h"                    // for sleep_time
 #include "multi_CC.h"
@@ -134,6 +137,9 @@ read_eeprom(char *in)
 #ifdef HAS_IP_FILTER
     } else if(in[2] == 'f') { ipfilter_read();
 #endif
+#ifdef HAS_HOSTNAME
+    } else if(in[2] == 'h') { hostname_read();
+#endif
     }
   } else 
 #endif
@@ -190,6 +196,9 @@ write_eeprom(char *in)
     } else if(in[2] == 'g') { d=4; fromip (in+3,hb,4); addr=EE_IP4_GATEWAY;
 #ifdef HAS_IP_FILTER
     } else if(in[2] == 'f') { ipfilter_write(in);      // whole list at once
+#endif
+#ifdef HAS_HOSTNAME
+    } else if(in[2] == 'h') { hostname_write(in);
 #endif
     } else if(in[2] == 'p') { d=2; fromdec(in+3,hb);   addr=EE_IP4_TCPLINK_PORT;
     } else if(in[2] == 'N') { d=4; fromip (in+3,hb,4); addr=EE_IP4_NTPSERVER;
@@ -308,6 +317,9 @@ eeprom_factory_reset(char *in)
 #endif
 #ifdef HAS_IP_FILTER
   ipfilter_clear();             // everyone may connect
+#endif
+#ifdef HAS_HOSTNAME
+  hostname_store("", 0);        // the default name
 #endif
 #ifdef HAS_FS
   ewb(EE_LOGENABLED, 0x00);
