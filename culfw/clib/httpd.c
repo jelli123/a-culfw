@@ -565,15 +565,33 @@ out_update(void)
       "<button>Install and restart</button></form>"
       "<script>"
       "function $(i){return document.getElementById(i)}"
+      /* The image id is looked up in the file first: a wrong variant or
+         an image without update support is refused at once, instead of
+         after the whole upload. The device checks it again. */
       "$('uf').onsubmit=function(e){e.preventDefault();"
-      "var f=$('ff').files[0];if(!f)return;"
+      "var f=$('ff').files[0],s=$('us'),r=new FileReader();if(!f)return;"
+      "$('ui').hidden=1;s.textContent='Reading the file...';"
+      "r.onload=function(){var b=new Uint8Array(r.result),"
+      "p='a-culfw-image:',n=p.length,i,j,id='';"
+      "for(i=0;i+n<b.length&&!id;i++){"
+      "for(j=0;j<n&&b[i+j]==p.charCodeAt(j);j++);"
+      /* this script is in every image as well: only a name closed by ';'
+         counts, not the literal above */
+      "if(j==n){for(j=i+n;j<i+n+24&&b[j]!=59;j++)id+=String.fromCharCode(b[j]);"
+      "if(b[j]!=59||!/^\\w+$/.test(id))id=''}}"
+      "if(id!='" FW_IMAGE_ID "'){s.textContent=id?'This is a '+id+"
+      "' image; this device runs " FW_IMAGE_ID ".':"
+      "'This file is no a-culfw image with update support.';return}"
+      "up(f)};r.readAsArrayBuffer(f)};"
+      "function up(f){"
       "var x=new XMLHttpRequest(),p=$('up'),s=$('us');"
-      "$('ui').hidden=1;p.hidden=0;p.value=0;s.textContent='Uploading...';"
+      "p.hidden=0;p.value=0;s.textContent='Uploading...';"
       "x.upload.onprogress=function(e){p.value=e.loaded/e.total;"
       "if(e.loaded==e.total)s.textContent='Checking...'};"
       "x.onload=function(){p.hidden=1;s.textContent=x.responseText;"
       "$('ui').hidden=x.status!=200};"
-      "x.onerror=function(){p.hidden=1;s.textContent='The upload failed.'};"
+      "x.onerror=function(){p.hidden=1;s.textContent='The connection to the "
+      "device broke off during the upload. Nothing was installed.'};"
       "x.open('POST','/update');x.send(f)}"
       "</script>");
 }
