@@ -146,6 +146,16 @@
 #define HAS_NTP                 1       // undef or define...1
 #define HAS_HTTPD                       // configuration page on port 80
 #define HAS_IP_FILTER                   // whitelist of senders, Wif / page
+// Firmware update from the page (clib/fwupdate.c): only the images behind
+// the bootloader, which stays untouched and remains the way back. An upload
+// has to carry the same image id.
+#if defined(CUBE_BL)
+#define HAS_FW_UPDATE
+#define FW_IMAGE_ID             "CUBE_BL"
+#elif defined(CUBEx4_BL)
+#define HAS_FW_UPDATE
+#define FW_IMAGE_ID             "CUBEx4_BL"
+#endif
 // The button on the bottom (PA14, active low). At power-up the bootloader
 // reads it; held for 10 s while running, it removes the web page password
 // and the IP whitelist.

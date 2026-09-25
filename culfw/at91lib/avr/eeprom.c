@@ -713,6 +713,32 @@ dataflash_info(uint16_t *pages, uint16_t *page_size, uint16_t *reserved)
 	*reserved = FLASHPAGE + 1;
 	return at45.pDesc->name;
 }
+
+/* Linear byte addresses, as AT45_Read/AT45_Write take them; a write covers
+   at most one page and erases it first. For the firmware update staging
+   area, far behind the settings page. */
+void
+dataflash_read(uint32_t address, uint8_t *buf, uint16_t len)
+{
+	AT45_Read(&at45, buf, len, address);
+}
+
+void
+dataflash_write(uint32_t address, uint8_t *buf, uint16_t len)
+{
+	AT45_Write(&at45, buf, len, address);
+}
+
+/* AT45_SendCommand's page/byte split of a linear address, as the shift of
+   the page number in the device address: pageOffset for the 264/528/...
+   byte pages, one less in the power-of-two ("binary") page mode, where the
+   device address is the linear one. */
+uint8_t
+dataflash_shift(void)
+{
+	return AT45_PageSize(&at45) == at45.pDesc->pageSize ?
+		at45.pDesc->pageOffset : at45.pDesc->pageOffset - 1;
+}
 #endif
 
 void dump_flash(void) {

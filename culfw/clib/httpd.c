@@ -46,6 +46,9 @@
 #ifdef HAS_IP_FILTER
 #include "ipfilter.h"
 #endif
+#ifdef HAS_FW_UPDATE
+#include "fwupdate.h"
+#endif
 #ifdef USE_RF_MODE
 #include "cc1100.h"
 #include "fband.h"
@@ -57,7 +60,7 @@
 #endif
 
 #define RX_SIZE       1024            // request line, headers and body
-#define TX_SIZE       6144            // the complete response
+#define TX_SIZE       8192            // the complete response, 5-6 KB now
 #define REQ_TIMEOUT   (CLOCK_SECOND * 10)
 #define REBOOT_DELAY  (CLOCK_SECOND * 3)
 
@@ -93,6 +96,14 @@ static struct timer reboot_timer;
 static uint8_t auth_fails;
 static struct timer auth_lock;
 
+#ifdef HAS_FW_UPDATE
+static uint8_t uploading;             // the owner's body goes to fwupdate
+static uint32_t upload_left;
+static uint8_t install_pending;
+static struct timer install_timer;
+#define INSTALL_DELAY (CLOCK_SECOND * 2)   // the answer goes out first
+#endif
+
 static const char busy[] =
   "HTTP/1.0 503 Service Unavailable\r\n"
   "Connection: close\r\nRetry-After: 1\r\n\r\n";
@@ -112,6 +123,19 @@ static void
 out_u(uint16_t v)
 {
   char b[6];
+  uint8_t i = sizeof(b);
+  b[--i] = 0;
+  do {
+    b[--i] = '0' + v % 10;
+    v /= 10;
+  } while(v);
+  out(b + i);
+}
+
+static void
+out_u32(uint32_t v)
+{
+  char b[11];
   uint8_t i = sizeof(b);
   b[--i] = 0;
   do {
@@ -165,14 +189,18 @@ out_header(const char *status)
       "Cache-Control: no-store\r\nConnection: close\r\n\r\n");
 }
 
+/* refresh_ip: 0 no reload, "" this page after 10 s, else that address */
 static void
 out_head(const char *refresh_ip)
 {
   out("<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
       "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
   if(refresh_ip) {
-    out("<meta http-equiv=\"refresh\" content=\"10;url=http://");
-    out(refresh_ip);
+    out("<meta http-equiv=\"refresh\" content=\"10;url=");
+    if(*refresh_ip) {
+      out("http://");
+      out(refresh_ip);
+    }
     out("/\">");
   }
   out("<title>" BOARD_NAME "</title><style>"
@@ -430,6 +458,57 @@ out_duty(void)
 }
 #endif
 
+#ifdef HAS_FW_UPDATE
+static void
+out_hex32(uint32_t v)
+{
+  static const char hex[] = "0123456789abcdef";
+  char b[9];
+  for(uint8_t i = 0; i < 8; i++)
+    b[i] = hex[(v >> (28 - 4 * i)) & 0xf];
+  b[8] = 0;
+  out(b);
+}
+
+/* The upload goes out as the raw file (XMLHttpRequest, for the progress
+   bar) to POST /update, which answers in plain text; POST /install then
+   copies it. Only with a password: the update can install anything. */
+static void
+out_update(void)
+{
+  out("<h2>Firmware update</h2>");
+  if(erb(EE_HTTPD_AUTH) != AUTH_SET) {
+    out("<p class=\"i\">Set a password for this page first: without one, "
+        "anyone on the network could install firmware.</p>");
+    return;
+  }
+  out("<p class=\"i\">Uploads have to carry the id of this image: ");
+  out(fwupdate_image_id());
+  out(". Should an update be cut short, the device starts in the "
+      "bootloader's USB drive by itself.</p>"
+      "<form id=\"uf\"><input type=\"file\" id=\"ff\" accept=\".bin\">"
+      "<button>Upload and check</button></form>"
+      "<progress id=\"up\" max=\"1\" value=\"0\" hidden></progress>"
+      "<p id=\"us\"></p>"
+      "<form method=\"post\" action=\"/install\" id=\"ui\" hidden>"
+      "<button>Install and restart</button></form>"
+      "<script>"
+      "function $(i){return document.getElementById(i)}"
+      "$('uf').onsubmit=function(e){e.preventDefault();"
+      "var f=$('ff').files[0];if(!f)return;"
+      "var x=new XMLHttpRequest(),p=$('up'),s=$('us');"
+      "$('ui').hidden=1;p.hidden=0;p.value=0;s.textContent='Uploading...';"
+      "x.upload.onprogress=function(e){p.value=e.loaded/e.total;"
+      "if(e.loaded==e.total)s.textContent='Checking...'};"
+      "x.onload=function(){p.hidden=1;s.textContent=x.responseText;"
+      "$('ui').hidden=x.status!=200};"
+      "x.onerror=function(){p.hidden=1;s.textContent='The upload failed.'};"
+      "x.open('POST','/update');x.send(f)}"
+      "</script>");
+}
+
+#endif
+
 static void
 page_config(const char *error)
 {
@@ -511,7 +590,11 @@ page_config(const char *error)
       "autocomplete=\"new-password\">"
       "<button>Save and restart</button></form>"
       "<form method=\"post\" action=\"/reboot\">"
-      "<button>Restart</button></form></body></html>");
+      "<button>Restart</button></form>");
+#ifdef HAS_FW_UPDATE
+  out_update();
+#endif
+  out("</body></html>");
 }
 
 static void
@@ -980,6 +1063,115 @@ handle_duty(const char *body)
 }
 #endif
 
+#ifdef HAS_FW_UPDATE
+static void
+upload_reply(const char *status, const char *msg)
+{
+  out("HTTP/1.0 ");
+  out(status);
+  out("\r\nContent-Type: text/plain; charset=utf-8\r\n"
+      "Cache-Control: no-store\r\nConnection: close\r\n\r\n");
+  out(msg);
+}
+
+static void
+upload_done(void)
+{
+  const char *err = fwupdate_finish();
+  if(err) {
+    upload_reply("400 Bad Request", err);
+    return;
+  }
+  upload_reply("200 OK", "Checked: " FW_IMAGE_ID " version ");
+  out(fwupdate_version());
+  out(", ");
+  out_u32(fwupdate_size());
+  out(" bytes, CRC32 ");
+  out_hex32(fwupdate_crc());
+  out(". Ready to install.");
+}
+
+/* data: body bytes of the owner's request */
+static void
+upload_data(const uint8_t *data, uint16_t len)
+{
+  if(len > upload_left)
+    len = upload_left;                // anything behind the body
+  const char *err = fwupdate_feed(data, len);
+  upload_left -= len;
+  if(err) {
+    uploading = 0;
+    upload_reply("400 Bad Request", err);
+  } else if(!upload_left) {
+    uploading = 0;
+    upload_done();
+  }
+}
+
+/* The headers of POST /update are in rx[]; body bytes may follow in rx and
+   in the rest of the current segment (more). */
+static void
+upload_start(const char *hdr_end, const uint8_t *more, uint16_t more_len)
+{
+  if(!authorized(hdr_end))
+    return;                           // 401 or 429 rendered
+  if(foreign_origin(hdr_end)) {
+    upload_reply("403 Forbidden", "Refused: the request came from another page.");
+    return;
+  }
+  if(erb(EE_HTTPD_AUTH) != AUTH_SET) {
+    upload_reply("403 Forbidden", "Set a password for this page first.");
+    return;
+  }
+
+  const char *cl = header("content-length:", hdr_end);
+  uint32_t len = 0;
+  uint16_t n = cl ? value_len(cl) : 0;
+  if(!n || n > 7) {
+    upload_reply("411 Length Required", "The upload has no valid length.");
+    return;
+  }
+  for(uint16_t i = 0; i < n; i++) {
+    if(cl[i] < '0' || cl[i] > '9') {
+      upload_reply("400 Bad Request", "The upload has no valid length.");
+      return;
+    }
+    len = len * 10 + cl[i] - '0';
+  }
+
+  const char *err = fwupdate_begin(len);
+  if(err) {
+    upload_reply("400 Bad Request", err);
+    return;
+  }
+  uploading = 1;
+  upload_left = len;
+
+  const char *body = hdr_end + 4;
+  if(rx + rx_len > body)
+    upload_data((const uint8_t *)body, rx + rx_len - body);
+  if(uploading && more_len)
+    upload_data(more, more_len);
+}
+
+static void
+handle_install(void)
+{
+  if(!fwupdate_ready()) {
+    page_error("409 Conflict");
+    return;
+  }
+  out_header("200 OK");
+  out_head("");                       // reload / after a while
+  out("<p>Installing " FW_IMAGE_ID " version ");
+  out(fwupdate_version());
+  out(" and restarting. This takes a few seconds; do not switch the device "
+      "off meanwhile. The page reloads by itself.</p></body></html>");
+  install_pending = 1;
+  timer_set(&install_timer, INSTALL_DELAY);
+}
+#endif
+
 /* Called once the request is complete in rx[]; renders the response. */
 static void
 handle_request(const char *hdr_end)
@@ -1002,6 +1194,10 @@ handle_request(const char *hdr_end)
   else if(!strncmp(path, "/duty ", 6))
     handle_duty(hdr_end + 4);
 #endif
+#ifdef HAS_FW_UPDATE
+  else if(!strncmp(path, "/install ", 9))
+    handle_install();
+#endif
   else if(!strncmp(path, "/reboot ", 8)) {
     page_restart(0);
     schedule_reboot();
@@ -1014,18 +1210,31 @@ handle_request(const char *hdr_end)
 static void
 receive(void)
 {
-  uint16_t n = uip_datalen();
-  if(n > RX_SIZE - rx_len) {
-    page_error("413 Request Entity Too Large");
-    return;
-  }
-  memcpy(rx + rx_len, uip_appdata, n);
-  rx_len += n;
+  // Take what fits: a firmware upload's first segment carries the headers
+  // and the start of a body far larger than rx.
+  uint16_t n = uip_datalen(), take = n;
+  if(take > RX_SIZE - rx_len)
+    take = RX_SIZE - rx_len;
+  memcpy(rx + rx_len, uip_appdata, take);
+  rx_len += take;
   rx[rx_len] = 0;
 
   char *hdr_end = strstr(rx, "\r\n\r\n");
-  if(!hdr_end)
+  if(!hdr_end) {
+    if(take < n || rx_len == RX_SIZE)
+      page_error("413 Request Entity Too Large");
     return;                           // headers incomplete
+  }
+#ifdef HAS_FW_UPDATE
+  if(!strncmp(rx, "POST /update ", 13)) {
+    upload_start(hdr_end, (const uint8_t *)uip_appdata + take, n - take);
+    return;
+  }
+#endif
+  if(take < n) {
+    page_error("413 Request Entity Too Large");
+    return;
+  }
 
   const char *cl = header("content-length:", hdr_end);
   uint16_t body_len = 0;
@@ -1069,6 +1278,9 @@ httpd_appcall(void)
     if(uip_newdata() && !owner) {
       owner = uip_conn;
       rx_len = tx_len = tx_pos = tx_chunk = 0;
+#ifdef HAS_FW_UPDATE
+      uploading = 0;
+#endif
       timer_set(&req_timer, REQ_TIMEOUT);
     } else if(uip_newdata() || uip_rexmit()) {
       uip_send(busy, sizeof(busy) - 1);
@@ -1082,6 +1294,12 @@ httpd_appcall(void)
 
   if(uip_aborted() || uip_timedout() || uip_closed()) {
     owner = 0;
+#ifdef HAS_FW_UPDATE
+    if(uploading) {                   // the browser gave up mid-upload
+      uploading = 0;
+      fwupdate_abort();
+    }
+#endif
     return;
   }
 
@@ -1100,6 +1318,12 @@ httpd_appcall(void)
     return;
   }
 
+#ifdef HAS_FW_UPDATE
+  if(uip_newdata() && !tx_len && uploading) {
+    timer_set(&req_timer, REQ_TIMEOUT);   // an upload takes longer than 10 s
+    upload_data(uip_appdata, uip_datalen());
+  } else
+#endif
   if(uip_newdata() && !tx_len)
     receive();
 
@@ -1165,4 +1389,8 @@ httpd_periodic(void)
     reboot_pending = 0;
     prepare_boot(0);
   }
+#ifdef HAS_FW_UPDATE
+  if(install_pending && timer_expired(&install_timer))
+    fwupdate_install();               // does not return
+#endif
 }

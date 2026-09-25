@@ -24,6 +24,9 @@ void dump_flash(void);
 #ifdef USE_DATAFLASH
 const char *dataflash_info(uint16_t *pages, uint16_t *page_size,
                            uint16_t *reserved);
+void dataflash_read(uint32_t address, uint8_t *buf, uint16_t len);
+void dataflash_write(uint32_t address, uint8_t *buf, uint16_t len);
+uint8_t dataflash_shift(void);
 #endif
 
 #endif /* __PGMSPACE_H_ */

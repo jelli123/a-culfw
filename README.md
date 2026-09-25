@@ -187,6 +187,33 @@ is hard to fake over TCP, as the answers never reach the forger; inside it, a
 device can take an allowed address. Clients that get their address by DHCP are
 best allowed by network.
 
+#### Memory
+
+A table on the page shows the flash the firmware takes of the application
+area, the AT45 dataflash found (type, pages, the pages set aside up to the
+settings page, and what is free) and the static RAM.
+
+#### Firmware update from the page
+
+`CUBE_BL` and `CUBEx4_BL` can be updated from the configuration page once a
+password is set - without one, anyone on the network could install firmware.
+Choose the `.bin`, "Upload and check", then "Install and restart".
+
+- The upload goes into the AT45 dataflash (from page 16 on; the settings live
+  in page 3). It is read back and checked: the CRC32 of what arrived (shown,
+  to compare with `crc32 CUBE_BL.bin`), the `ldr pc` the image has to start
+  with, and the id `a-culfw-image:<env>;<version>;` it has to carry - the same
+  `<env>` as the running firmware. So a CUBEx4 image does not go onto a CUBe,
+  and neither do images from before this feature; those still go through the
+  bootloader's USB drive.
+- Installing runs from RAM with interrupts off (`clib/fwupdate.c`): it blanks
+  the application's first page, copies the rest from the dataflash, and writes
+  the first page last, each page verified. The bootloader
+  (0x100000-0x104000) is never written. It takes a few seconds.
+- If the copy is cut short - power lost - the application's first word is
+  still blank, and the bootloader then keeps the device in its USB drive by
+  itself (D1 blinks four times a second): copy the `.bin` there as usual.
+
 #### Resetting the access protection
 
 Hold the button on the bottom for 10 seconds while the CUBe is running: this
