@@ -260,47 +260,58 @@ write_eeprom(char *in)
 extern const uint8_t CC1100_CFG1[];
 
 /* Until 2026-09-26 the builds without a second radio kept the web page
-   password, the IP whitelist and the host name right behind EE_LCD_LAST,
-   where the CUBEx4 keeps EE_CC1100_CFG1. They now sit behind that slot in
-   every build. A slot not holding the second radio's defaults is the old
-   layout: the three blocks move up by one slot - the highest first, as
-   the old and new places overlap - and the slot gets the defaults. */
+   password, the IP whitelist and the host name at 124-193, right behind
+   EE_LCD_LAST, where the CUBEx4 keeps EE_CC1100_CFG1. They now sit at
+   165-234, behind that slot, in every build: the same 70 bytes, 41 up.
+
+   Each byte written rewrites a dataflash page, so this takes seconds, and
+   the old and new places overlap. It therefore has to survive being cut
+   short at any byte:
+   1. the old 70 bytes are saved to MIG_SCRATCH, an unused dataflash page,
+      then MIG_FLAG is set - until then the old place is untouched;
+   2. with MIG_FLAG set, the saved bytes are copied to the new place and
+      the slot gets the second radio's defaults; a start that finds
+      MIG_FLAG set repeats this step from the saved copy;
+   3. MIG_FLAG is cleared.
+   A slot already holding the defaults, without MIG_FLAG, is the new
+   layout. */
+#if !defined(HAS_IP_FILTER) || !defined(HAS_HOSTNAME)
+# error "eeprom_migrate_spare: the old layout had all three blocks"
+#endif
+#define MIG_LEN      (EE_HOSTNAME + EE_HOSTNAME_SIZE - EE_HTTPD_AUTH)
+#define MIG_SCRATCH  ((uint8_t *)264)   // the next dataflash page (4)
+#define MIG_FLAG     (MIG_SCRATCH + MIG_LEN)
+#define MIG_SAVED    'M'
+
 static void
 eeprom_migrate_spare(void)
 {
   uint8_t *spare = EE_CC1100_CFG1_SPARE;
   uint8_t i;
 
-  for(i = 0; i < EE_CC1100_CFG_SIZE; i++)
-    if(erb(spare + i) != __LPM(CC1100_CFG1 + i))
-      break;
-  if(i == EE_CC1100_CFG_SIZE)
-    return;                             // the new layout already
+  if(erb(MIG_FLAG) != MIG_SAVED) {
+    for(i = 0; i < EE_CC1100_CFG_SIZE; i++)
+      if(erb(spare + i) != __LPM(CC1100_CFG1 + i))
+        break;
+    if(i == EE_CC1100_CFG_SIZE)
+      return;                           // the new layout already
 
-  static const uint8_t size[] = {
-#ifdef HAS_HOSTNAME
-    EE_HOSTNAME_SIZE,
-#endif
-#ifdef HAS_IP_FILTER
-    EE_IP_FILTER_SIZE,
-#endif
-    EE_HTTPD_AUTH_SIZE
-  };
-  uint8_t *to[] = {
-#ifdef HAS_HOSTNAME
-    EE_HOSTNAME,
-#endif
-#ifdef HAS_IP_FILTER
-    EE_IP_FILTER,
-#endif
-    EE_HTTPD_AUTH
-  };
-  for(uint8_t b = 0; b < sizeof(size); b++)
-    for(i = size[b]; i-- > 0; )
-      ewb(to[b] + i, erb(to[b] - EE_CC1100_CFG_SIZE + i));
+    for(i = 0; i < MIG_LEN; i++) {      // 1. save
+      ewb(MIG_SCRATCH + i, erb(spare + i));
+      wdt_reset();
+    }
+    ewb(MIG_FLAG, MIG_SAVED);
+  }
 
-  for(i = 0; i < EE_CC1100_CFG_SIZE; i++)
+  for(i = 0; i < MIG_LEN; i++) {        // 2. copy from the saved bytes
+    ewb(EE_HTTPD_AUTH + i, erb(MIG_SCRATCH + i));
+    wdt_reset();
+  }
+  for(i = 0; i < EE_CC1100_CFG_SIZE; i++) {
     ewb(spare + i, __LPM(CC1100_CFG1 + i));
+    wdt_reset();
+  }
+  ewb(MIG_FLAG, 0);                     // 3. done
 }
 #endif
 
