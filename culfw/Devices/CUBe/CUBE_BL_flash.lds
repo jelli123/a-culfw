@@ -37,12 +37,11 @@ ENTRY(entry)
 
 MEMORY
 {
-    /* Not to the end of the 256 KiB: the EEPROM emulation
-       (at91lib/avr/eeprom.c, NUM_PAGES 64 from page 959) lives in
-       0x13BF00-0x13FF00. An image running into it would be flashed over the
-       settings, so the link has to fail first. */
+    /* To the end of the 256 KiB. The CUBe keeps its settings in the AT45
+       dataflash (USE_DATAFLASH); the internal-flash EEPROM emulation in
+       at91lib/avr/eeprom.c, pages 959-1022, is compiled only without it. */
     sram (W!RX) : ORIGIN = 0x200000, LENGTH = 0x10000
-    flash (RX) : ORIGIN = 0x104000, LENGTH = 0x37F00
+    flash (RX) : ORIGIN = 0x104000, LENGTH = 0x3C000
 }
 
 SECTIONS

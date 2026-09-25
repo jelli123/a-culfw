@@ -8,7 +8,7 @@
   "name": "eQ-3 MAX! Cube (AT91SAM7X256, a-culfw bootloader)",
   "upload": {
     "maximum_ram_size": 65536,
-    "maximum_size": 229120,
+    "maximum_size": 245760,
     "protocol": "mbed",
     "protocols": [
       "mbed"
