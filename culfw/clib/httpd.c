@@ -272,6 +272,7 @@ static const char css[] =
   "background:var(--acc);border:1px solid var(--acc);border-radius:6px;"
   "cursor:pointer}"
   "button.s{color:var(--acc);background:transparent}"
+  "button:disabled{opacity:.4;cursor:default}"
   "table{width:100%;border-collapse:collapse}"
   "td,th{padding:.4em .8em .4em 0;text-align:left;vertical-align:top;"
   "border-bottom:1px solid var(--line)}"
