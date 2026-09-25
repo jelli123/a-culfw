@@ -570,6 +570,7 @@ out_update(void)
          after the whole upload. The device checks it again. */
       "$('uf').onsubmit=function(e){e.preventDefault();"
       "var f=$('ff').files[0],s=$('us'),r=new FileReader();if(!f)return;"
+      "var k=$('uf').querySelector('button');k.disabled=1;"
       "$('ui').hidden=1;s.textContent='Reading the file...';"
       "r.onload=function(){var b=new Uint8Array(r.result),"
       "p='a-culfw-image:',n=p.length,i,j,id='';"
@@ -581,13 +582,15 @@ out_update(void)
       "if(b[j]!=59||!/^\\w+$/.test(id))id=''}}"
       "if(id!='" FW_IMAGE_ID "'){s.textContent=id?'This is a '+id+"
       "' image; this device runs " FW_IMAGE_ID ".':"
-      "'This file is no a-culfw image with update support.';return}"
+      "'This file is no a-culfw image with update support.';k.disabled=0;return}"
       "up(f)};r.readAsArrayBuffer(f)};"
       "function up(f){"
-      "var x=new XMLHttpRequest(),p=$('up'),s=$('us');"
+      "var x=new XMLHttpRequest(),p=$('up'),s=$('us'),"
+      "k=$('uf').querySelector('button');x.onloadend=function(){k.disabled=0};"
       "p.hidden=0;p.value=0;s.textContent='Uploading...';"
       "x.upload.onprogress=function(e){p.value=e.loaded/e.total;"
-      "if(e.loaded==e.total)s.textContent='Checking...'};"
+      "if(e.loaded==e.total)s.textContent='Sent; the device is still "
+      "writing and checking it...'};"
       "x.onload=function(){p.hidden=1;s.textContent=x.responseText;"
       "$('ui').hidden=x.status!=200};"
       "x.onerror=function(){p.hidden=1;s.textContent='The connection to the "
@@ -1279,7 +1282,13 @@ upload_done(void)
   out_u32(fwupdate_size());
   out(" bytes, CRC32 ");
   out_hex32(fwupdate_crc());
-  out(". Ready to install.");
+  uint32_t tu, tc;
+  fwupdate_times(&tu, &tc);
+  out(" (upload ");
+  out_fixed(tu * 10 / 125, 1);
+  out(" s, check ");
+  out_fixed(tc * 10 / 125, 1);
+  out(" s). Ready to install.");
 }
 
 /* data: body bytes of the owner's request */

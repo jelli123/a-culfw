@@ -18,6 +18,7 @@ void fwupdate_abort(void);
 uint8_t fwupdate_ready(void);
 uint32_t fwupdate_size(void);
 uint32_t fwupdate_crc(void);
+void fwupdate_times(uint32_t *upload, uint32_t *check);   // 1/125 s
 const char *fwupdate_version(void);     // of the staged image
 const char *fwupdate_image_id(void);    // of the running one
 

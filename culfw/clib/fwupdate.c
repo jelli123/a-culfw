@@ -29,9 +29,11 @@
 
 #include <string.h>
 #include <avr/eeprom.h>                 // dataflash_*
+#include <avr/wdt.h>                    // wdt_reset
 
 #include "fwupdate.h"
 #include "version.h"
+#include "clock.h"                      // ticks
 
 #define STAGE_PAGE      16              // first dataflash page of the image
 #define PAGE_MAX        528             // largest AT45 page handled
@@ -55,6 +57,7 @@ static uint16_t page_size, fill;
 static uint32_t wr_addr;
 static uint8_t pbuf[PAGE_MAX];
 static char version[24];
+static uint32_t t_begin, t_check, t_end;   // ticks, 125 per second
 
 static uint32_t
 crc32(uint32_t crc, const uint8_t *p, uint16_t n)
@@ -88,6 +91,7 @@ fwupdate_begin(uint32_t len)
     return "The image does not fit into the dataflash.";
 
   total = len;
+  t_begin = ticks;
   got = 0;
   fill = 0;
   crc_rx = 0xffffffff;
@@ -123,6 +127,7 @@ fwupdate_feed(const uint8_t *data, uint16_t len)
     }
     if(fill == page_size) {
       dataflash_write(wr_addr, pbuf, fill);
+      wdt_reset();                    // a segment writes up to 6 pages
       wr_addr += fill;
       fill = 0;
     }
@@ -143,11 +148,13 @@ fwupdate_finish(void)
     dataflash_write(wr_addr, pbuf, fill);
     fill = 0;
   }
+  t_check = ticks;
 
   // Read it back: the CRC checks the dataflash, the id the image.
   for(uint32_t pos = 0; pos < total; pos += page_size) {
     uint16_t n = total - pos < page_size ? total - pos : page_size;
     dataflash_read((uint32_t)STAGE_PAGE * page_size + pos, pbuf, n);
+    wdt_reset();                      // the whole image in one call
     crc = crc32(crc, pbuf, n);
     for(uint16_t i = 0; i < n && !found; i++) {
       char c = pbuf[i];
@@ -182,6 +189,7 @@ fwupdate_finish(void)
   if(!found)
     return "Not an a-culfw " FW_IMAGE_ID " image with update support.";
   crc_ok = ~crc;
+  t_end = ticks;
   state = FW_READY;
   return 0;
 }
@@ -196,6 +204,14 @@ uint32_t
 fwupdate_size(void)
 {
   return total;
+}
+
+/* upload and check, in 1/125 s */
+void
+fwupdate_times(uint32_t *upload, uint32_t *check)
+{
+  *upload = t_check - t_begin;
+  *check = t_end - t_check;
 }
 
 uint32_t

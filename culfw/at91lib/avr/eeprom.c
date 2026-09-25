@@ -25,7 +25,10 @@ static At45 at45;
 static const Pin pins[]  = {BOARD_AT45_A_SPI_PINS, BOARD_AT45_A_NPCS_PIN};
 
 /// SPI clock frequency, in Hz.
-#define SPCK        1000000
+/* 6 MHz, as the firmware update's copy routine uses on this board (the
+   AT45DB041D takes up to 66 MHz). At 1 MHz, checking a staged 150 KB
+   image took longer than the 16 s watchdog. */
+#define SPCK        6000000
 
 #define FLASHPAGE	3
 
