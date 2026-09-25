@@ -219,27 +219,76 @@ out_head(const char *refresh_ip)
     }
     out("/\"><script>history.replaceState(null,'','/')</script>");
   }
-  out("<title>" BOARD_NAME "</title><style>"
-      "body{font-family:sans-serif;max-width:30em;margin:1em auto;padding:0 1em}"
-      "label{display:block;margin:.7em 0 .2em}"
-      "input:not([type=checkbox]){width:100%;box-sizing:border-box;padding:.3em}"
-      "h2{font-size:1.1em;margin-top:1.5em}"
-      "table{border-collapse:collapse}"
-      "td,th{padding:.2em .6em .2em 0;text-align:left}"
-      "button{margin-top:1em;padding:.5em 1em}"
-      ".i{color:#666;font-size:.9em}.e{padding:.5em;background:#fdd}"
-      "</style></head><body><h1>" BOARD_NAME "</h1>"
-      "<p class=\"i\">" FW_NAME " " VERSION " &middot; " BOARD_ID_STR
-      "<br>MAC ");
-  out_mac();
+  out("<title>");
 #ifdef HAS_HOSTNAME
-  out(" &middot; ");
   out(hostname_get());
+#else
+  out(BOARD_NAME);
 #endif
-  out("</p>");
+  out("</title><link rel=\"stylesheet\" href=\"/s.css?" VERSION "\">"
+      "</head><body><header><h1>" BOARD_NAME "</h1><div class=\"i\">");
+#ifdef HAS_HOSTNAME
+  out(hostname_get());
+  out(" &middot; ");
+#endif
+  out(FW_NAME " " VERSION "</div>");
   if(refresh_ip == 0 && erb(EE_HTTPD_AUTH) == AUTH_SET)
     out("<form method=\"post\" action=\"/logout\">"
-        "<button>Log out</button></form>");
+        "<button class=\"s\">Log out</button></form>");
+  out("</header>");
+}
+
+/* The stylesheet, cached by the browser: its URL carries the version. */
+static const char css[] =
+  ":root{--bg:#f3f4f6;--card:#fff;--fg:#1c2230;--mute:#667085;"
+  "--line:#dde1e7;--acc:#2563c9;--err:#fdeceb;--errl:#d64545}"
+  "@media(prefers-color-scheme:dark){:root{--bg:#14171c;--card:#1d2128;"
+  "--fg:#e6e8eb;--mute:#98a2b3;--line:#2e3440;--acc:#6699f0;"
+  "--err:#3b2020}}"
+  "*{box-sizing:border-box}"
+  "body{margin:0;font:15px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,"
+  "sans-serif;background:var(--bg);color:var(--fg)}"
+  "header{display:flex;align-items:center;gap:.4em 1em;flex-wrap:wrap;"
+  "padding:.7em 16px;background:var(--card);border-bottom:1px solid var(--line)}"
+  "header h1{margin:0;font-size:1.2em}header .i{flex:1}"
+  "header form button{margin:0}"
+  "nav{display:flex;overflow-x:auto;padding:0 8px;background:var(--card);"
+  "border-bottom:1px solid var(--line)}"
+  "nav a{padding:.7em .9em;color:var(--mute);text-decoration:none;"
+  "white-space:nowrap;border-bottom:2px solid transparent}"
+  "nav a.on{color:var(--acc);border-color:var(--acc)}"
+  "main{max-width:44em;margin:0 auto;padding:16px}"
+  "section{background:var(--card);border:1px solid var(--line);"
+  "border-radius:10px;padding:.1em 1.2em 1.2em;margin-bottom:16px}"
+  ".js section{display:none}.js section.on{display:block}"
+  "h2{font-size:1.05em;margin:1.1em 0 .5em}"
+  "label{display:block;margin:.8em 0 .25em;font-weight:500}"
+  "label.c{display:flex;gap:.5em;align-items:center;font-weight:400}"
+  "input:not([type=checkbox]){width:100%;padding:.5em .6em;font:inherit;"
+  "color:inherit;background:var(--bg);border:1px solid var(--line);"
+  "border-radius:6px}"
+  "input:focus{outline:2px solid var(--acc);outline-offset:-1px}"
+  "button{margin-top:1em;padding:.55em 1.2em;font:inherit;color:#fff;"
+  "background:var(--acc);border:1px solid var(--acc);border-radius:6px;"
+  "cursor:pointer}"
+  "button.s{color:var(--acc);background:transparent}"
+  "table{width:100%;border-collapse:collapse}"
+  "td,th{padding:.4em .8em .4em 0;text-align:left;vertical-align:top;"
+  "border-bottom:1px solid var(--line)}"
+  "th{color:var(--mute);font-weight:500}"
+  "td:first-child{color:var(--mute);white-space:nowrap}"
+  ".i{color:var(--mute);font-size:.9em}"
+  ".e{padding:.6em .8em;background:var(--err);border-left:4px solid "
+  "var(--errl);border-radius:6px}"
+  "progress{width:100%;height:.8em;margin-top:1em}"
+  "summary{margin-top:.8em;color:var(--acc);cursor:pointer}";
+
+static void
+page_css(void)
+{
+  out("HTTP/1.0 200 OK\r\nContent-Type: text/css\r\n"
+      "Cache-Control: max-age=604800\r\nConnection: close\r\n\r\n");
+  out(css);
 }
 
 static void
@@ -273,7 +322,6 @@ out_2(uint8_t v)
 static void
 out_time(void)
 {
-  out("<p class=\"i\">Time: ");
   if(!ntp_synced) {
     out("no answer from the NTP server yet");
   } else {
@@ -289,7 +337,6 @@ out_time(void)
     out_u(ntp_gmtoff < 0 ? -ntp_gmtoff : ntp_gmtoff);
     out(")");
   }
-  out("</p>");
 }
 #endif
 
@@ -461,8 +508,9 @@ out_duty(void)
   }
   // novalidate: the browser would complain in its own language; the
   // server checks both fields anyway (handle_duty)
-  out("<form method=\"post\" action=\"/duty\" novalidate>"
-      "<label for=\"m\">Suspend the limit for debugging, minutes (1-");
+  out("<details><summary>Suspend the limit for debugging</summary>"
+      "<form method=\"post\" action=\"/duty\" novalidate>"
+      "<label for=\"m\">Minutes (1-");
   out_u(DUTY_MAX_MIN);
   out(")</label><input type=\"number\" id=\"m\" name=\"m\" min=\"1\" max=\"");
   out_u(DUTY_MAX_MIN);
@@ -475,9 +523,9 @@ out_duty(void)
       "the radio regulations of the country the device is operated in. "
       "The suspension ends by itself and with every restart. It fills the "
       "budget, and nothing is taken from it meanwhile.</p>"
-      "<label><input type=\"checkbox\" name=\"c\" value=\"1\" required> "
+      "<label class=\"c\"><input type=\"checkbox\" name=\"c\" value=\"1\" required> "
       "I will observe the radio regulations that apply here</label>"
-      "<button>Suspend the limit</button></form>");
+      "<button>Suspend the limit</button></form></details>");
 }
 #endif
 
@@ -533,27 +581,73 @@ out_update(void)
 #endif
 
 static void
-page_config(const char *error)
+out_ip_u16(const u16_t *ip)
+{
+  out_ip_bytes((const uint8_t *)ip);
+}
+
+/* Device, address, time; the radio modules and the duty cycle. */
+static void
+out_overview(void)
+{
+  out("<section id=\"t-ov\"><h2>Device</h2><table>"
+      "<tr><td>Board</td><td>" BOARD_ID_STR "</td></tr>");
+#ifdef HAS_HOSTNAME
+  out("<tr><td>Host name</td><td>");
+  out(hostname_get());
+  out("</td></tr>");
+#endif
+  out("<tr><td>Address</td><td>");
+  out_ip_u16(uip_hostaddr);
+  out(erb(EE_USE_DHCP) ? " (DHCP)" : " (static)");
+  out("</td></tr><tr><td>Gateway</td><td>");
+  out_ip_u16(uip_draddr);
+  out("</td></tr><tr><td>MAC</td><td>");
+  out_mac();
+  out("</td></tr>");
+#ifdef HAS_NTP
+  out("<tr><td>NTP server</td><td>");
+  if(ntp_conn) {
+    out_ip_u16(ntp_conn->ripaddr);
+    out(ntp_source == NTP_FROM_DHCP ? " (from DHCP)" :
+        ntp_source == NTP_FROM_GATEWAY ? " (the gateway)" : "");
+  } else {
+    out("none yet");
+  }
+  out("</td></tr><tr><td>Time</td><td>");
+  out_time();
+  out("</td></tr>");
+#endif
+  out("</table>");
+#ifdef USE_RF_MODE
+  out_radios();
+  out_duty();
+#endif
+  out("</section>");
+}
+
+/* tab: the section to show first, 0 for the overview */
+static void
+page_config(const char *error, const char *tab)
 {
   int8_t off = (int8_t)erb(EE_IP4_NTPOFFSET);
 
   out_header(error ? "400 Bad Request" : "200 OK");
   out_head(0);
+  out("<nav><a href=\"#t-ov\">Overview</a><a href=\"#t-net\">Network</a>"
+      "<a href=\"#t-acc\">Access</a><a href=\"#t-sys\">System</a></nav>"
+      "<main data-t=\"");
+  out(tab ? tab : "t-ov");
+  out("\">");
   if(error) {
     out("<p class=\"e\">");
     out(error);
     out(" Nothing was saved.</p>");
   }
-#ifdef USE_RF_MODE
-  out_radios();
-  out_duty();
-#endif
-#ifdef SAM7
-  out_memory();
-#endif
-  out("<h2>Network</h2>");
-  out("<form method=\"post\" action=\"/\">"
-      "<label><input type=\"checkbox\" name=\"d\" value=\"1\"");
+  out_overview();
+  out("<form method=\"post\" action=\"/\"><section id=\"t-net\">"
+      "<h2>Network</h2>"
+      "<label class=\"c\"><input type=\"checkbox\" name=\"d\" value=\"1\"");
   if(erb(EE_USE_DHCP))
     out(" checked");
   out("> DHCP (the addresses below are then the last lease)</label>");
@@ -582,7 +676,8 @@ page_config(const char *error)
   out_field("IP address", 'a', EE_IP4_ADDR);             out("\">");
   out_field("Netmask", 'n', EE_IP4_NETMASK);             out("\">");
   out_field("Gateway", 'g', EE_IP4_GATEWAY);             out("\">");
-  out_field("NTP server (0.0.0.0: the gateway)", 'N', EE_IP4_NTPSERVER);
+  out_field("NTP server (0.0.0.0: from DHCP, else the gateway)", 'N',
+            EE_IP4_NTPSERVER);
   out("\">");
   out_field("TCP port (CUL protocol)", 'p', 0);
   out_u(eeprom_read_word((uint16_t *)EE_IP4_TCPLINK_PORT));
@@ -594,10 +689,8 @@ page_config(const char *error)
   } else {
     out_u(off);
   }
-  out("\">");
-#ifdef HAS_NTP
-  out_time();
-#endif
+  out("\"><button>Save and restart</button></section>"
+      "<section id=\"t-acc\">");
 #ifdef HAS_IP_FILTER
   ipfilter_entry e[IPFILTER_MAX];
   uint8_t n = ipfilter_get(e);
@@ -622,7 +715,7 @@ page_config(const char *error)
   if(erb(EE_HTTPD_AUTH) == AUTH_SET)
     out("<p class=\"i\">User name: " AUTH_USER ". Holding the button on the "
         "bottom for 10 seconds removes the password.</p>"
-        "<label><input type=\"checkbox\" name=\"x\" value=\"1\"> "
+        "<label class=\"c\"><input type=\"checkbox\" name=\"x\" value=\"1\"> "
         "Remove the password</label>");
   else
     out("<p class=\"e\">No password is set: anyone on the network can "
@@ -633,13 +726,26 @@ page_config(const char *error)
       "<label for=\"r\">Repeat the new password</label>"
       "<input type=\"password\" id=\"r\" name=\"r\" maxlength=\"32\" "
       "autocomplete=\"new-password\">"
-      "<button>Save and restart</button></form>"
-      "<form method=\"post\" action=\"/reboot\">"
-      "<button>Restart</button></form>");
+      "<button>Save and restart</button></section></form>"
+      "<section id=\"t-sys\">");
+#ifdef SAM7
+  out_memory();
+#endif
+  out("<h2>Restart</h2><form method=\"post\" action=\"/reboot\">"
+      "<button class=\"s\">Restart the device</button></form>");
 #ifdef HAS_FW_UPDATE
   out_update();
 #endif
-  out("</body></html>");
+  /* Tabs: without JavaScript every section shows, one below the other. */
+  out("</section></main><script>(function(){var d=document,b=d.body,"
+      "t=d.querySelectorAll('nav a');b.className='js';"
+      "function s(){var h=location.hash.slice(1),f=0,i,o;"
+      "for(i=0;i<t.length;i++)if(t[i].hash.slice(1)==h)f=1;"
+      "if(!f)h=d.querySelector('main').getAttribute('data-t');"
+      "for(i=0;i<t.length;i++){o=t[i].hash.slice(1)==h;"
+      "t[i].className=o?'on':'';"
+      "d.getElementById(t[i].hash.slice(1)).className=o?'on':''}}"
+      "onhashchange=s;s()})()</script></body></html>");
 }
 
 static void
@@ -647,7 +753,7 @@ page_restart(const char *new_ip)
 {
   out_header("200 OK");
   out_head(new_ip ? new_ip : "");     // DHCP: the same address, most likely
-  out("<p>Restarting&hellip;</p>");
+  out("<main><section><p>Restarting&hellip; The page reloads by itself.</p>");
   if(new_ip) {
     out("<p>The device will answer at <a href=\"http://");
     out(new_ip);
@@ -655,7 +761,7 @@ page_restart(const char *new_ip)
     out(new_ip);
     out("</a>.</p>");
   }
-  out("</body></html>");
+  out("</section></main></body></html>");
 }
 
 static void
@@ -672,7 +778,7 @@ page_error(const char *status)
 static void
 page_redirect(void)
 {
-  out("HTTP/1.0 303 See Other\r\nLocation: /\r\n"
+  out("HTTP/1.0 303 See Other\r\nLocation: /#t-ov\r\n"
       "Cache-Control: no-store\r\nConnection: close\r\n\r\n");
 }
 
@@ -1097,7 +1203,7 @@ handle_save(const char *body)
   const char *err = save(body, &dhcp, a);
 
   if(err) {
-    page_config(err);
+    page_config(err, "t-net");
     return;
   }
   char ip[16];
@@ -1115,12 +1221,12 @@ handle_duty(const char *body)
   uint16_t len = 0, m;
   const char *v = field(body, 'm', &len);
   if(!parse_uint(v, len, DUTY_MAX_MIN, &m)) {
-    page_config("Invalid duration (1-60 minutes).");
+    page_config("Invalid duration (1-60 minutes).", "t-ov");
     return;
   }
   v = field(body, 'c', &len);
   if(m && !(v && len == 1 && v[0] == '1')) {
-    page_config("Confirm that you observe the radio regulations.");
+    page_config("Confirm that you observe the radio regulations.", "t-ov");
     return;
   }
   credit_suspend_s = m * 60;
@@ -1230,10 +1336,11 @@ handle_install(void)
   }
   out_header("200 OK");
   out_head("");                       // reload / after a while
-  out("<p>Installing " FW_IMAGE_ID " version ");
+  out("<main><section><p>Installing " FW_IMAGE_ID " version ");
   out(fwupdate_version());
   out(" and restarting. This takes a few seconds; do not switch the device "
-      "off meanwhile. The page reloads by itself.</p></body></html>");
+      "off meanwhile. The page reloads by itself.</p></section></main>"
+      "</body></html>");
   install_pending = 1;
   timer_set(&install_timer, INSTALL_DELAY);
 }
@@ -1252,7 +1359,9 @@ handle_request(const char *hdr_end)
   else if(!authorized(hdr_end))
     ;                                 // 401 or 429 rendered
   else if(!post)
-    root ? page_config(0) : page_error("404 Not Found");
+    root ? page_config(0, 0) :
+    !strncmp(path, "/s.css", 6) && (path[6] == ' ' || path[6] == '?') ?
+      page_css() : page_error("404 Not Found");
   else if(foreign_origin(hdr_end))
     page_error("403 Forbidden");
   else if(root)
@@ -1272,10 +1381,11 @@ handle_request(const char *hdr_end)
     out("<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
         "<title>" BOARD_NAME "</title>"
+        "<link rel=\"stylesheet\" href=\"/s.css?" VERSION "\">"
         "<script>history.replaceState(null,'','/')</script></head><body>"
-        "<p>Logged out. <a href=\"/\">Log in again</a></p>"
-        "<p style=\"color:#666\">Some browsers ask for the password only "
-        "after they have been closed.</p></body></html>");
+        "<main><section><p>Logged out. <a href=\"/\">Log in again</a></p>"
+        "<p class=\"i\">Some browsers ask for the password only after they "
+        "have been closed.</p></section></main></body></html>");
   } else if(!strncmp(path, "/reboot ", 8)) {
     page_restart(0);
     schedule_reboot();

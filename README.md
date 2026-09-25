@@ -134,10 +134,18 @@ pio run -e CUBE_BL -t upload --upload-port /media/$USER/<drive>
 
 #### Configuration page
 
+The page has four tabs: *Overview* (device, address, NTP, time, radio modules,
+duty cycle), *Network*, *Access* (allowed clients, password) and *System*
+(memory, restart, firmware update). Its stylesheet is served as `/s.css` and
+cached by the browser per firmware version; light and dark follow the system
+setting.
+
 The CUBe firmware serves a configuration page on port 80
 (`culfw/clib/httpd.c`, enabled by `HAS_HTTPD` in its `board.h`): DHCP, IP
 address, netmask, gateway, NTP server, the TCP port for the CUL protocol and
-the time zone - the settings the `Wi*` commands write. Saving validates the
+the time zone - the settings the `Wi*` commands write. The NTP server is the one set; left at
+0.0.0.0, the one the DHCP server names (option 42), else the gateway - the
+overview shows which. Saving validates the
 whole form first, then stores it and restarts the device. The page also shows
 the time from the NTP server in that time zone (whole hours, no daylight saving
 time); until the first answer the CUBe asks every 8 seconds, then every 4.5
