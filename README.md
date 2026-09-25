@@ -33,10 +33,13 @@ not with PlatformIO.
 There is no ESP32 target. A native port was started in January 2026 and removed
 again in February.
 
-Two toolchains are in play and they are not the same compiler: PlatformIO pins
-`toolchain-atmelavr@~1.50400.0` (avr-gcc 5.4.0), while the makefiles use
-whatever `avr-gcc` is on the PATH (verified against 14.2.0). Code size differs
-measurably between the two.
+PlatformIO and the makefiles do not use the same compilers. PlatformIO pins
+`toolchain-atmelavr@~3.70300.0` (avr-gcc 7.3.0) for the AVR targets and, for
+the CUBe, `toolchain-gccarmnoneeabi@~1.120301.0` (arm-none-eabi-gcc 12.3,
+about 2.5 KB smaller than the 7.2 `ststm32` brings along, which MapleCUN still
+uses). The makefiles use whatever `avr-gcc` / `arm-none-eabi-gcc` is on the
+PATH (avr-gcc verified against 14.2.0). Code size differs measurably between
+them.
 
 ## Generating Firmware (Build)
 
@@ -57,14 +60,14 @@ pio run -e CUBE_BL -e CUBEx4_BL
 
 The MapleCUN and CUBe environments need an **x86_64** host: on linux_aarch64
 PlatformIO cannot resolve the ARM toolchain the `ststm32` platform asks for.
+The AVR targets build on both.
 
 PlatformIO has no platform for the CUBe's AT91SAM7X256 (ARM7TDMI). Its
-environments borrow `ststm32` for the arm-none-eabi toolchain and describe the
-chip in `boards/cube.json`; `scripts/at91sam7.py` removes the Cortex-M flags
-`ststm32` adds (`-mthumb`, `-fdata-sections`). The CUBe linker scripts place
-`board_cstartup.o` first explicitly, because the bootloader only accepts an
-image that starts with it. The AVR
-targets build on both.
+environments borrow `ststm32` (pinned to 20.0) for the arm-none-eabi toolchain
+and describe the chip in `boards/cube.json`; `scripts/at91sam7.py` removes the
+Cortex-M flags `ststm32` adds (`-mthumb`, `-fdata-sections`). The CUBe linker
+scripts place `board_cstartup.o` first explicitly, because the bootloader only
+accepts an image that starts with it.
 
 ### Build profiles
 
