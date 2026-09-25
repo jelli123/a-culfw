@@ -232,7 +232,11 @@ out_head(const char *refresh_ip)
   out(hostname_get());
   out(" &middot; ");
 #endif
+#ifdef FW_IMAGE_ID
+  out(FW_NAME " " VERSION " &middot; " FW_IMAGE_ID "</div>");
+#else
   out(FW_NAME " " VERSION "</div>");
+#endif
   if(refresh_ip == 0 && erb(EE_HTTPD_AUTH) == AUTH_SET)
     out("<form method=\"post\" action=\"/logout\">"
         "<button class=\"s\">Log out</button></form>");
@@ -623,7 +627,25 @@ static void
 out_overview(void)
 {
   out("<section id=\"t-ov\"><h2>Device</h2><table>"
-      "<tr><td>Board</td><td>" BOARD_ID_STR "</td></tr>");
+      "<tr><td>Board</td><td>" BOARD_ID_STR "</td></tr>"
+      "<tr><td>Firmware</td><td>" FW_NAME " " VERSION
+#ifdef FW_IMAGE_ID
+      ", " FW_IMAGE_ID
+#endif
+      "<br><span class=\"i\">");
+#if defined(USE_RF_MODE) && defined(HAS_MULTI_CC)
+  uint8_t found = 0;
+  for(uint8_t i = 0; i < RADIO_COUNT; i++)
+    found += radio_present(i) ? 1 : 0;
+  out("for up to ");
+  out_u(RADIO_COUNT);
+  out(" radio modules, detected at start: ");
+  out_u(found);
+  out(" found");
+#else
+  out("for one radio module");
+#endif
+  out("</span></td></tr>");
 #ifdef HAS_HOSTNAME
   out("<tr><td>Host name</td><td>");
   out(hostname_get());
