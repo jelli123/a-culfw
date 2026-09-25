@@ -274,14 +274,43 @@ extern const uint8_t CC1100_CFG1[];
       MIG_FLAG set repeats this step from the saved copy;
    3. MIG_FLAG is cleared.
    A slot already holding the defaults, without MIG_FLAG, is the new
-   layout. */
+   layout.
+
+   The dataflash asks for every page of a sector to be rewritten within
+   10,000 writes to that sector, else its bits may drift. MIG_SCRATCH
+   shares sector 0a with the settings page, which takes all the writes, so
+   MIG_FLAG counts only together with a CRC-16 over the saved bytes
+   (MIG_CRC): a drifted flag alone cannot start the move again and copy
+   old settings over the current ones. */
 #if !defined(HAS_IP_FILTER) || !defined(HAS_HOSTNAME)
 # error "eeprom_migrate_spare: the old layout had all three blocks"
 #endif
 #define MIG_LEN      (EE_HOSTNAME + EE_HOSTNAME_SIZE - EE_HTTPD_AUTH)
 #define MIG_SCRATCH  ((uint8_t *)264)   // the next dataflash page (4)
 #define MIG_FLAG     (MIG_SCRATCH + MIG_LEN)
+#define MIG_CRC      (MIG_FLAG + 1)     // 2 bytes, high first
 #define MIG_SAVED    'M'
+
+static uint16_t
+mig_crc(void)                           // CRC-16/CCITT over the saved bytes
+{
+  uint16_t crc = 0xffff;
+  for(uint8_t i = 0; i < MIG_LEN; i++) {
+    crc ^= (uint16_t)erb(MIG_SCRATCH + i) << 8;
+    for(uint8_t k = 0; k < 8; k++)
+      crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
+  }
+  return crc;
+}
+
+static uint8_t
+mig_saved(void)
+{
+  if(erb(MIG_FLAG) != MIG_SAVED)
+    return 0;
+  uint16_t crc = mig_crc();
+  return erb(MIG_CRC) == (crc >> 8) && erb(MIG_CRC + 1) == (crc & 0xff);
+}
 
 static void
 eeprom_migrate_spare(void)
@@ -289,7 +318,7 @@ eeprom_migrate_spare(void)
   uint8_t *spare = EE_CC1100_CFG1_SPARE;
   uint8_t i;
 
-  if(erb(MIG_FLAG) != MIG_SAVED) {
+  if(!mig_saved()) {
     for(i = 0; i < EE_CC1100_CFG_SIZE; i++)
       if(erb(spare + i) != __LPM(CC1100_CFG1 + i))
         break;
@@ -300,7 +329,10 @@ eeprom_migrate_spare(void)
       ewb(MIG_SCRATCH + i, erb(spare + i));
       wdt_reset();
     }
-    ewb(MIG_FLAG, MIG_SAVED);
+    uint16_t crc = mig_crc();
+    ewb(MIG_CRC, crc >> 8);
+    ewb(MIG_CRC + 1, crc & 0xff);
+    ewb(MIG_FLAG, MIG_SAVED);           // last: only now the save counts
   }
 
   for(i = 0; i < MIG_LEN; i++) {        // 2. copy from the saved bytes
@@ -312,6 +344,8 @@ eeprom_migrate_spare(void)
     wdt_reset();
   }
   ewb(MIG_FLAG, 0);                     // 3. done
+  ewb(MIG_CRC, 0);
+  ewb(MIG_CRC + 1, 0);
 }
 #endif
 
