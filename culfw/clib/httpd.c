@@ -105,6 +105,7 @@ static struct timer auth_lock;
    address gets a 401 once, whatever it carries; the browser then drops
    them and asks again. */
 static uint8_t logout_pending;
+static uint8_t factory_pending;       // after the answer went out
 static uint16_t logout_ip[2];
 
 #ifdef HAS_FW_UPDATE
@@ -554,9 +555,12 @@ out_update(void)
         "anyone on the network could install firmware.</p>");
     return;
   }
-  out("<p class=\"i\">Uploads have to carry the id of this image: ");
-  out(fwupdate_image_id());
-  out(". Should an update be cut short, the device starts in the "
+  out("<p class=\"i\">Accepted: " FW_IMAGE_ID " images"
+#ifdef FW_IMAGE_ALT
+      ", and " FW_IMAGE_ALT " after a question - both keep the settings at "
+      "the same place and detect the radio modules at start"
+#endif
+      ". Should an update be cut short, the device starts in the "
       "bootloader's USB drive by itself.</p>"
       "<form id=\"uf\"><input type=\"file\" id=\"ff\" accept=\".bin\">"
       "<button>Upload and check</button></form>"
@@ -581,7 +585,13 @@ out_update(void)
          counts, not the literal above */
       "if(j==n){for(j=i+n;j<i+n+24&&b[j]!=59;j++)id+=String.fromCharCode(b[j]);"
       "if(b[j]!=59||!/^\\w+$/.test(id))id=''}}"
-      "if(id!='" FW_IMAGE_ID "'){s.textContent=id?'This is a '+id+"
+      "if(id!='" FW_IMAGE_ID "'"
+#ifdef FW_IMAGE_ALT
+      "&&!(id=='" FW_IMAGE_ALT "'&&confirm('This is a '+id+' image; this "
+      "device runs " FW_IMAGE_ID ". Both keep the settings at the same place "
+      "and detect the radio modules at start. Change to '+id+'?'))"
+#endif
+      "){s.textContent=id?'This is a '+id+"
       "' image; this device runs " FW_IMAGE_ID ".':"
       "'This file is no a-culfw image with update support.';k.disabled=0;return}"
       "up(f)};r.readAsArrayBuffer(f)};"
@@ -754,7 +764,16 @@ page_config(const char *error, const char *tab)
   out_memory();
 #endif
   out("<h2>Restart</h2><form method=\"post\" action=\"/reboot\">"
-      "<button class=\"s\">Restart the device</button></form>");
+      "<button class=\"s\">Restart the device</button></form>"
+      "<h2>Factory reset</h2>"
+      "<form method=\"post\" action=\"/factory\" novalidate>"
+      "<p class=\"i\">Sets everything back to the defaults and restarts: "
+      "radio settings, DHCP with the default addresses, TCP port 2323, "
+      "no password, no allowed-clients list, the default host name. "
+      "A device with a static address may then answer at another one.</p>"
+      "<label class=\"c\"><input type=\"checkbox\" name=\"c\" value=\"1\">"
+      " Reset all settings</label>"
+      "<button class=\"s\">Factory reset</button></form>");
 #ifdef HAS_FW_UPDATE
   out_update();
 #endif
@@ -1277,7 +1296,9 @@ upload_done(void)
     upload_reply("400 Bad Request", err);
     return;
   }
-  upload_reply("200 OK", "Checked: " FW_IMAGE_ID " version ");
+  upload_reply("200 OK", "Checked: ");
+  out(fwupdate_staged_id());
+  out(" version ");
   out(fwupdate_version());
   out(", ");
   out_u32(fwupdate_size());
@@ -1290,6 +1311,11 @@ upload_done(void)
   out(" s, check ");
   out_fixed(tc * 10 / 125, 1);
   out(" s). Ready to install.");
+  if(strcmp(fwupdate_staged_id(), FW_IMAGE_ID)) {
+    out(" It replaces " FW_IMAGE_ID " with ");
+    out(fwupdate_staged_id());
+    out(".");
+  }
 }
 
 /* data: body bytes of the owner's request */
@@ -1364,7 +1390,9 @@ handle_install(void)
   }
   out_header("200 OK");
   out_head("");                       // reload / after a while
-  out("<main><section><p>Installing " FW_IMAGE_ID " version ");
+  out("<main><section><p>Installing ");
+  out(fwupdate_staged_id());
+  out(" version ");
   out(fwupdate_version());
   out(" and restarting. This takes a few seconds; do not switch the device "
       "off meanwhile. The page reloads by itself.</p></section></main>"
@@ -1414,6 +1442,21 @@ handle_request(const char *hdr_end)
         "<main><section><p>Logged out. <a href=\"/\">Log in again</a></p>"
         "<p class=\"i\">Some browsers ask for the password only after they "
         "have been closed.</p></section></main></body></html>");
+  } else if(!strncmp(path, "/factory ", 9)) {
+    const char *v;
+    uint16_t len = 0;
+    v = field(hdr_end + 4, 'c', &len);
+    if(!(v && len == 1 && v[0] == '1')) {
+      page_config("Tick \"Reset all settings\" to confirm.", "t-sys");
+    } else {
+      out_header("200 OK");
+      out_head("");
+      out("<main><section><p>Resetting all settings and restarting. This "
+          "takes a few seconds; the page then reloads by itself.</p>"
+          "</section></main></body></html>");
+      factory_pending = 1;
+      timer_set(&reboot_timer, REBOOT_DELAY);
+    }
   } else if(!strncmp(path, "/reboot ", 8)) {
     page_restart(0);
     schedule_reboot();
@@ -1604,6 +1647,10 @@ httpd_periodic(void)
   if(reboot_pending && timer_expired(&reboot_timer)) {
     reboot_pending = 0;
     prepare_boot(0);
+  }
+  if(factory_pending && timer_expired(&reboot_timer)) {
+    factory_pending = 0;
+    eeprom_factory_reset(0);          // restarts the device itself
   }
 #ifdef HAS_FW_UPDATE
   if(install_pending && timer_expired(&install_timer))

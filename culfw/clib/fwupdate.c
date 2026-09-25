@@ -4,10 +4,11 @@
  * Staging: the uploaded image is written page by page into the dataflash
  * from STAGE_PAGE on, far behind the settings page, and a CRC32 is kept as
  * it arrives. fwupdate_finish() reads it all back: the CRC has to match,
- * and the image has to carry the id of the running one - the
- * "a-culfw-image:<FW_IMAGE_ID>;<version>;" string below. That keeps a
- * CUBEx4 image off a CUBe, and images without update support (older ones)
- * off the page; those still go through the bootloader's USB drive.
+ * and the image has to carry the id of the running one or of FW_IMAGE_ALT
+ * - the "a-culfw-image:<FW_IMAGE_ID>;<version>;" string below. CUBe and
+ * CUBEx4 accept each other (same settings layout); other devices' images
+ * and images without update support (older ones) are refused, those still
+ * go through the bootloader's USB drive.
  *
  * Installing: the image cannot be copied by code that lives in the flash it
  * overwrites. ram_install() runs from RAM (.ramfunc) with every interrupt
@@ -45,7 +46,7 @@
    first PREFIX_LEN bytes are what is searched for, so the prefix is in
    every image once, here, and this string is linked in by that use. */
 const char fw_image_ident[] = ID_PREFIX VERSION ";";
-#define PREFIX_LEN      (sizeof(ID_PREFIX) - 1)
+#define PREFIX_LEN      (sizeof("a-culfw-image:") - 1)
 
 extern char _sfixed[], _flash_end[];    // CUBE*_flash.lds
 
@@ -57,6 +58,7 @@ static uint16_t page_size, fill;
 static uint32_t wr_addr;
 static uint8_t pbuf[PAGE_MAX];
 static char version[24];
+static char staged_id[16];
 static uint32_t t_begin, t_check, t_end;   // ticks, 125 per second
 
 static uint32_t
@@ -138,8 +140,12 @@ fwupdate_feed(const uint8_t *data, uint16_t len)
 const char *
 fwupdate_finish(void)
 {
+  /* "a-culfw-image:" - the start of fw_image_ident, the only copy of it;
+     then an id of word characters and ';', then the version and ';'.
+     Anything else behind the prefix (the page script holds it too) is
+     skipped. */
   const char *prefix = fw_image_ident;
-  uint8_t matched = 0, vlen = 0, in_version = 0, found = 0;
+  uint8_t matched = 0, part = 0, len = 0, found = 0;
   uint32_t crc = 0xffffffff;
 
   if(state != FW_RECEIVING || got != total)
@@ -158,26 +164,38 @@ fwupdate_finish(void)
     crc = crc32(crc, pbuf, n);
     for(uint16_t i = 0; i < n && !found; i++) {
       char c = pbuf[i];
-      if(in_version) {
-        // only a version closed by ';' counts
-        if(c == ';' && vlen) {
-          version[vlen] = 0;
-          found = 1;
-        } else if(c < ' ' || c > '~' || c == ';' || vlen == sizeof(version) - 1) {
-          in_version = 0;
-          matched = c == prefix[0];
+      if(part == 1) {                 // the id
+        if(c == ';' && len) {
+          staged_id[len] = 0;
+          part = 2;
+          len = 0;
+        } else if(((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                   (c >= '0' && c <= '9') || c == '_') &&
+                  len < sizeof(staged_id) - 1) {
+          staged_id[len++] = c;
         } else {
-          version[vlen++] = c;
+          part = 0;
+          matched = c == prefix[0];
+        }
+      } else if(part == 2) {          // the version
+        if(c == ';' && len) {
+          version[len] = 0;
+          found = 1;
+        } else if(c > ' ' && c <= '~' && c != ';' && len < sizeof(version) - 1) {
+          version[len++] = c;
+        } else {
+          part = 0;
+          matched = c == prefix[0];
         }
       } else if(c == prefix[matched]) {
         if(++matched == PREFIX_LEN) {
-          in_version = 1;
-          vlen = 0;
+          part = 1;
+          len = 0;
         }
       } else {
         // Restarting at the mismatching byte is not a full KMP search: it
         // would miss the id right behind a broken-off "a-culfw-ima". No
-        // image holds that; the id is found wherever the linker put it.
+        // image holds that.
         matched = c == prefix[0];
       }
     }
@@ -187,7 +205,13 @@ fwupdate_finish(void)
   if(crc != crc_rx)
     return "The dataflash does not read back what was received.";
   if(!found)
-    return "Not an a-culfw " FW_IMAGE_ID " image with update support.";
+    return "Not an a-culfw image with update support.";
+  if(strcmp(staged_id, FW_IMAGE_ID)
+#ifdef FW_IMAGE_ALT
+     && strcmp(staged_id, FW_IMAGE_ALT)
+#endif
+    )
+    return "An a-culfw image for another device.";
   crc_ok = ~crc;
   t_end = ticks;
   state = FW_READY;
@@ -218,6 +242,12 @@ uint32_t
 fwupdate_crc(void)
 {
   return crc_ok;
+}
+
+const char *
+fwupdate_staged_id(void)
+{
+  return staged_id;
 }
 
 const char *

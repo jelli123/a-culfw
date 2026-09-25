@@ -221,10 +221,11 @@ Choose the `.bin`, "Upload and check", then "Install and restart".
 - The upload goes into the AT45 dataflash (from page 16 on; the settings live
   in page 3). It is read back and checked: the CRC32 of what arrived (shown,
   to compare with `crc32 CUBE_BL.bin`), the `ldr pc` the image has to start
-  with, and the id `a-culfw-image:<env>;<version>;` it has to carry - the same
-  `<env>` as the running firmware. So a CUBEx4 image does not go onto a CUBe,
-  and neither do images from before this feature; those still go through the
-  bootloader's USB drive.
+  with, and the id `a-culfw-image:<env>;<version>;` it has to carry. CUBE_BL
+  and CUBEx4_BL accept each other (after a question in the browser): both keep
+  the settings at the same place and detect the radio modules at start. Images
+  for other devices, and images from before this feature, are refused; those
+  still go through the bootloader's USB drive.
 - Installing runs from RAM with interrupts off (`clib/fwupdate.c`). It first
   reads the whole staged image back and checks its CRC32 once more; on a
   mismatch nothing is written and the old firmware restarts. Then it blanks
@@ -234,6 +235,12 @@ Choose the `.bin`, "Upload and check", then "Install and restart".
 - If the copy is cut short - power lost - the application's first word is
   still blank, and the bootloader then keeps the device in its USB drive by
   itself (D1 blinks four times a second): copy the `.bin` there as usual.
+
+#### Factory reset
+
+System > Factory reset (after ticking "Reset all settings") does what the `e`
+command does: radio settings, DHCP with the default addresses, TCP port 2323,
+no password, no whitelist, the default host name - then it restarts.
 
 #### Resetting the access protection
 

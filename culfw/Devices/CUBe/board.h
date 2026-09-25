@@ -155,9 +155,11 @@
 #if defined(CUBE_BL)
 #define HAS_FW_UPDATE
 #define FW_IMAGE_ID             "CUBE_BL"
+#define FW_IMAGE_ALT            "CUBEx4_BL"  // accepted too: same settings layout
 #elif defined(CUBEx4_BL)
 #define HAS_FW_UPDATE
 #define FW_IMAGE_ID             "CUBEx4_BL"
+#define FW_IMAGE_ALT            "CUBE_BL"
 #endif
 // The button on the bottom (PA14, active low). At power-up the bootloader
 // reads it; held for 10 s while running, it removes the web page password
