@@ -11,8 +11,11 @@
  *
  * Installing: the image cannot be copied by code that lives in the flash it
  * overwrites. ram_install() runs from RAM (.ramfunc) with every interrupt
- * off, drives SPI1 by hand instead of the at91lib driver, and calls
- * nothing in flash. It first programs the application's first page blank:
+ * off, drives SPI1 by hand instead of the at91lib driver (the chip select
+ * as a plain output), and calls nothing in flash. It first reads the whole
+ * staged image that way and checks its CRC32; on a mismatch it restarts
+ * without writing anything, and the old firmware runs on. Then it programs
+ * the application's first page blank:
  * the bootloader starts the application only when that word is not
  * 0xffffffff, so if the copy is cut short - power, anything - the device
  * comes up in the bootloader's USB drive by itself. Then it copies pages
@@ -221,6 +224,15 @@ fwupdate_image_id(void)
 #define RAMFUNC __attribute__((section(".ramfunc"), noinline, \
                                optimize("no-tree-loop-distribute-patterns")))
 
+/* The dataflash's chip select (NPCS0, PA21) is driven as a plain output
+   during the copy. The SPI's own CSAAT/LASTXFER handling left it asserted
+   after a read - LASTXFER acts on the next character written - so the
+   next read's 0x0B went into the running one and the address byte became
+   the command: every page after the first read as 0xff, the first word
+   too, and the device stayed in the bootloader. */
+#define DF_CS_PIO       AT91C_BASE_PIOA
+#define DF_CS_PIN       (1u << 21)
+
 static RAMFUNC uint8_t
 ram_spi(uint8_t out)
 {
@@ -239,6 +251,7 @@ static RAMFUNC void
 ram_read(uint32_t a, uint32_t *buf, uint32_t valid)
 {
   AT91PS_SPI spi = AT91C_BASE_SPI1;
+  DF_CS_PIO->PIO_CODR = DF_CS_PIN;      // select
   ram_spi(0x0B);
   ram_spi(a >> 16);
   ram_spi(a >> 8);
@@ -256,7 +269,20 @@ ram_read(uint32_t a, uint32_t *buf, uint32_t valid)
   }
   while(!(spi->SPI_SR & AT91C_SPI_TXEMPTY))
     ;
-  spi->SPI_CR = AT91C_SPI_LASTXFER;     // release the chip select
+  DF_CS_PIO->PIO_SODR = DF_CS_PIN;      // deselect: the read ends here
+  for(volatile uint32_t d = 0; d < 8; d++)
+    ;                                   // CS high for more than 50 ns
+}
+
+static RAMFUNC uint32_t
+ram_crc32(uint32_t crc, const uint32_t *buf, uint32_t n)
+{
+  for(uint32_t i = 0; i < n; i++) {
+    crc ^= (buf[i / 4] >> (8 * (i & 3))) & 0xff;
+    for(uint32_t k = 0; k < 8; k++)
+      crc = (crc >> 1) ^ (0xEDB88320 & -(crc & 1));
+  }
+  return crc;
 }
 
 /* Programs one internal flash page (erase included), verifies, retries. */
@@ -284,7 +310,7 @@ ram_program(uint32_t dest, const uint32_t *buf)
 
 static RAMFUNC void __attribute__((noreturn))
 ram_install(uint32_t first_page, uint32_t page_size, uint32_t shift,
-            uint32_t len, uint32_t dest)
+            uint32_t len, uint32_t dest, uint32_t crc_expect)
 {
   AT91PS_SPI spi = AT91C_BASE_SPI1;
   uint32_t buf[FLASH_PAGE / 4];
@@ -297,9 +323,29 @@ ram_install(uint32_t first_page, uint32_t page_size, uint32_t shift,
   AT91C_BASE_AIC->AIC_IDCR = 0xffffffff;
   spi->SPI_PTCR = AT91C_PDC_RXTDIS | AT91C_PDC_TXTDIS;
   spi->SPI_MR = AT91C_SPI_MSTR | AT91C_SPI_MODFDIS | (0xE << 16);  // NPCS0
-  spi->SPI_CSR[0] = (spi->SPI_CSR[0] & ~AT91C_SPI_SCBR) |
-                    (8 << 8) | AT91C_SPI_CSAAT;                    // 6 MHz
+  spi->SPI_CSR[0] = (spi->SPI_CSR[0] & ~(AT91C_SPI_SCBR | AT91C_SPI_CSAAT)) |
+                    (8 << 8);                                      // 6 MHz
   (void)spi->SPI_RDR;
+  DF_CS_PIO->PIO_SODR = DF_CS_PIN;      // high first, then ours
+  DF_CS_PIO->PIO_OER = DF_CS_PIN;
+  DF_CS_PIO->PIO_PER = DF_CS_PIN;
+
+  // 0. read the whole image the way the copy will, before touching the
+  //    flash: on a mismatch the running firmware stays and just restarts
+  uint32_t crc = 0xffffffff, page = first_page, off = 0;
+  for(uint32_t done = 0; done < len; done += FLASH_PAGE) {
+    uint32_t n = len - done < FLASH_PAGE ? len - done : FLASH_PAGE;
+    ram_read((page << shift) | off, buf, n);
+    crc = ram_crc32(crc, buf, n);
+    AT91C_BASE_WDTC->WDTC_WDCR = (0xA5u << 24) | AT91C_WDTC_WDRSTT;
+    off += FLASH_PAGE;
+    if(off >= page_size) {
+      off -= page_size;
+      page++;
+    }
+  }
+  if(~crc != crc_expect)
+    goto restart;
   // erase before programming, FMCN for 1.5 us as EFC_PerformCommand1 uses
   AT91C_BASE_MC->MC_FMR = (AT91C_BASE_MC->MC_FMR &
                            ~(AT91C_MC_FMCN | AT91C_MC_NEBP)) | (72 << 16);
@@ -324,6 +370,7 @@ ram_install(uint32_t first_page, uint32_t page_size, uint32_t shift,
   ram_read(first_page << shift, buf, len);
   ram_program(dest, buf);
 
+restart:
   AT91C_BASE_RSTC->RSTC_RCR = (0xA5u << 24) | AT91C_RSTC_PROCRST |
                               AT91C_RSTC_PERRST | AT91C_RSTC_EXTRST;
   for(;;)
@@ -335,7 +382,8 @@ fwupdate_install(void)
 {
   // the geometry before leaving flash: dataflash_* live there
   uint32_t shift = dataflash_shift();
-  ram_install(STAGE_PAGE, page_size, shift, total, (uint32_t)_sfixed);
+  ram_install(STAGE_PAGE, page_size, shift, total, (uint32_t)_sfixed,
+              crc_ok);
 }
 
 #endif

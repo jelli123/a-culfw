@@ -217,7 +217,9 @@ Choose the `.bin`, "Upload and check", then "Install and restart".
   `<env>` as the running firmware. So a CUBEx4 image does not go onto a CUBe,
   and neither do images from before this feature; those still go through the
   bootloader's USB drive.
-- Installing runs from RAM with interrupts off (`clib/fwupdate.c`): it blanks
+- Installing runs from RAM with interrupts off (`clib/fwupdate.c`). It first
+  reads the whole staged image back and checks its CRC32 once more; on a
+  mismatch nothing is written and the old firmware restarts. Then it blanks
   the application's first page, copies the rest from the dataflash, and writes
   the first page last, each page verified. The bootloader
   (0x100000-0x104000) is never written. It takes a few seconds.
