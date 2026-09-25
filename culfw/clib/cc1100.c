@@ -120,7 +120,7 @@ const PROGMEM const uint8_t CC1100_CFG[EE_CC1100_CFG_SIZE] = {
    SimpleRX: Async, SimpleTX: Async+Unmodulated
  */
 };
-#if defined(HAS_MULTI_CC) && (NUM_SLOWRF > 1)
+#if (defined(HAS_MULTI_CC) && (NUM_SLOWRF > 1)) || defined(EE_CC1100_CFG1_SPARE)
 #ifdef TTYSBU
 const PROGMEM const uint8_t CC1100_CFG1[EE_CC1100_CFG_SIZE] = {
 // CULFW   IDX NAME     RESET STUDIO COMMENT
@@ -341,6 +341,11 @@ cc_factory_reset(void)
   t = EE_FASTRF_CFG;
   for(uint8_t i = 0; i < sizeof(FASTRF_CFG); i++)
     ewb(t++, __LPM(FASTRF_CFG+i));
+#endif
+#ifdef EE_CC1100_CFG1_SPARE
+  t = EE_CC1100_CFG1_SPARE;
+  for(uint8_t i = 0; i < sizeof(CC1100_CFG); i++)
+    ewb(t++, __LPM(CC1100_CFG1+i));
 #endif
 #if defined(HAS_MULTI_CC)
 #if NUM_SLOWRF > 1

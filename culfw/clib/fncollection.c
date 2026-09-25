@@ -256,6 +256,54 @@ write_eeprom(char *in)
   }
 }
 
+#ifdef EE_CC1100_CFG1_SPARE
+extern const uint8_t CC1100_CFG1[];
+
+/* Until 2026-09-26 the builds without a second radio kept the web page
+   password, the IP whitelist and the host name right behind EE_LCD_LAST,
+   where the CUBEx4 keeps EE_CC1100_CFG1. They now sit behind that slot in
+   every build. A slot not holding the second radio's defaults is the old
+   layout: the three blocks move up by one slot - the highest first, as
+   the old and new places overlap - and the slot gets the defaults. */
+static void
+eeprom_migrate_spare(void)
+{
+  uint8_t *spare = EE_CC1100_CFG1_SPARE;
+  uint8_t i;
+
+  for(i = 0; i < EE_CC1100_CFG_SIZE; i++)
+    if(erb(spare + i) != __LPM(CC1100_CFG1 + i))
+      break;
+  if(i == EE_CC1100_CFG_SIZE)
+    return;                             // the new layout already
+
+  static const uint8_t size[] = {
+#ifdef HAS_HOSTNAME
+    EE_HOSTNAME_SIZE,
+#endif
+#ifdef HAS_IP_FILTER
+    EE_IP_FILTER_SIZE,
+#endif
+    EE_HTTPD_AUTH_SIZE
+  };
+  uint8_t *to[] = {
+#ifdef HAS_HOSTNAME
+    EE_HOSTNAME,
+#endif
+#ifdef HAS_IP_FILTER
+    EE_IP_FILTER,
+#endif
+    EE_HTTPD_AUTH
+  };
+  for(uint8_t b = 0; b < sizeof(size); b++)
+    for(i = size[b]; i-- > 0; )
+      ewb(to[b] + i, erb(to[b] - EE_CC1100_CFG_SIZE + i));
+
+  for(i = 0; i < EE_CC1100_CFG_SIZE; i++)
+    ewb(spare + i, __LPM(CC1100_CFG1 + i));
+}
+#endif
+
 void
 eeprom_init(void)
 {
@@ -263,6 +311,9 @@ eeprom_init(void)
   if(erb(EE_MAGIC_OFFSET)   != VERSION_1 ||
      erb(EE_MAGIC_OFFSET+1) != VERSION_2)
        eeprom_factory_reset(0);
+#ifdef EE_CC1100_CFG1_SPARE
+  eeprom_migrate_spare();
+#endif
 
   led_mode = erb(EE_LED);
 #ifdef XLED

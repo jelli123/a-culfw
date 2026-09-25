@@ -95,12 +95,18 @@ void do_wdt_enable(uint8_t t);
 # ifdef HAS_FS
 #  error "HAS_HTTPD: place EE_HTTPD_AUTH behind EE_FS_LAST first"
 # endif
+/* Behind room for EE_CC1100_CFG1 whether the build has a second radio or
+   not: the CUBe and CUBEx4 images then keep these settings at the same
+   bytes and can replace one another. */
 # if defined(HAS_MULTI_CC) && NUM_SLOWRF > 2
 #  define EE_HTTPD_AUTH       (EE_CC1100_CFG2+EE_CC1100_CFG_SIZE)
-# elif defined(HAS_MULTI_CC) && NUM_SLOWRF > 1
-#  define EE_HTTPD_AUTH       (EE_CC1100_CFG1+EE_CC1100_CFG_SIZE)
 # else
-#  define EE_HTTPD_AUTH       EE_LCD_LAST
+#  define EE_HTTPD_AUTH       (EE_LCD_LAST+EE_CC1100_CFG_SIZE)
+# endif
+# if !defined(HAS_MULTI_CC) || NUM_SLOWRF < 2
+/* Unused by this build; kept holding the second radio's defaults, for an
+   image with a second radio to find there. */
+#  define EE_CC1100_CFG1_SPARE EE_LCD_LAST
 # endif
 # define EE_HTTPD_AUTH_SIZE   25
 #endif
@@ -119,7 +125,7 @@ void do_wdt_enable(uint8_t t);
 # endif
 # define EE_HOSTNAME          (EE_IP_FILTER+EE_IP_FILTER_SIZE)
 # define EE_HOSTNAME_SIZE     24
-/* On the CUBEx4 this reaches into EE_DUDETTE_PUBL (217). The ARM devices
+/* This reaches into EE_DUDETTE_PUBL (217). The ARM devices
    take their MAC from the flash serial and never use the EE_DUDETTE_*
    bytes; on any other device the overlap would be a bug. */
 # ifndef ARM
