@@ -50,6 +50,20 @@ const char fw_image_ident[] = ID_PREFIX VERSION ";";
 
 extern char _sfixed[], _flash_end[];    // CUBE*_flash.lds
 
+/* The install's report, at a fixed RAM address in every version: written
+   right before the restart, read by the firmware that starts then - the
+   old one or the new one. Neither the bootloader (a few bytes of stack at
+   the top) nor the start-up code (.relocate, .bss below it; the linker
+   scripts assert that) touches it. */
+#define FW_REPORT       ((volatile fw_report_t *)0x20C000)
+#define FW_REPORT_MAGIC 0x46575231u     // "FWR1"
+
+typedef struct {
+  uint32_t magic, result, scbr, len, expect, crc_fast, crc_slow, crc_flash;
+} fw_report_t;
+
+static fw_report_t last;                // read at start, then cleared there
+
 enum { FW_IDLE, FW_RECEIVING, FW_READY };
 
 static uint8_t state;
@@ -244,6 +258,34 @@ fwupdate_crc(void)
   return crc_ok;
 }
 
+void
+fwupdate_boot(void)
+{
+  volatile fw_report_t *r = FW_REPORT;
+  if(r->magic == FW_REPORT_MAGIC) {
+    last.result = r->result;
+    last.scbr = r->scbr;
+    last.len = r->len;
+    last.expect = r->expect;
+    last.crc_fast = r->crc_fast;
+    last.crc_slow = r->crc_slow;
+    last.crc_flash = r->crc_flash;
+  }
+  r->magic = 0;                         // shown once, for this start
+}
+
+uint8_t
+fwupdate_last(uint32_t *mhz, uint32_t *expect, uint32_t *fast,
+              uint32_t *slow, uint32_t *flash_crc)
+{
+  *mhz = last.scbr ? 48 / last.scbr : 0;
+  *expect = last.expect;
+  *fast = last.crc_fast;
+  *slow = last.crc_slow;
+  *flash_crc = last.crc_flash;
+  return last.result;
+}
+
 const char *
 fwupdate_staged_id(void)
 {
@@ -354,30 +396,29 @@ ram_program(uint32_t dest, const uint32_t *buf)
   }
 }
 
-static RAMFUNC void __attribute__((noreturn))
-ram_install(uint32_t first_page, uint32_t page_size, uint32_t shift,
-            uint32_t len, uint32_t dest, uint32_t crc_expect)
+/* Reads until two readings agree (at most 4 tries): a misread page is
+   not programmed. */
+static RAMFUNC void
+ram_read_twice(uint32_t a, uint32_t *buf, uint32_t valid)
 {
-  AT91PS_SPI spi = AT91C_BASE_SPI1;
-  uint32_t buf[FLASH_PAGE / 4];
-  uint32_t df_page = first_page, df_off = 0, cpsr;
+  uint32_t again[FLASH_PAGE / 4];
+  for(uint32_t tries = 0; tries < 4; tries++) {
+    ram_read(a, buf, valid);
+    ram_read(a, again, valid);
+    uint32_t same = 1;
+    for(uint32_t w = 0; w < FLASH_PAGE / 4; w++)
+      if(buf[w] != again[w])
+        same = 0;
+    if(same)
+      return;
+  }
+}
 
-  // IRQ and FIQ off in the core as well as in the AIC
-  __asm__ volatile("mrs %0, cpsr\n\t"
-                   "orr %0, %0, #0xc0\n\t"
-                   "msr cpsr_c, %0" : "=r"(cpsr));
-  AT91C_BASE_AIC->AIC_IDCR = 0xffffffff;
-  spi->SPI_PTCR = AT91C_PDC_RXTDIS | AT91C_PDC_TXTDIS;
-  spi->SPI_MR = AT91C_SPI_MSTR | AT91C_SPI_MODFDIS | (0xE << 16);  // NPCS0
-  spi->SPI_CSR[0] = (spi->SPI_CSR[0] & ~(AT91C_SPI_SCBR | AT91C_SPI_CSAAT)) |
-                    (8 << 8);                                      // 6 MHz
-  (void)spi->SPI_RDR;
-  DF_CS_PIO->PIO_SODR = DF_CS_PIN;      // high first, then ours
-  DF_CS_PIO->PIO_OER = DF_CS_PIN;
-  DF_CS_PIO->PIO_PER = DF_CS_PIN;
-
-  // 0. read the whole image the way the copy will, before touching the
-  //    flash: on a mismatch the running firmware stays and just restarts
+/* CRC of the staged image as this code reads it */
+static RAMFUNC uint32_t
+ram_image_crc(uint32_t first_page, uint32_t page_size, uint32_t shift,
+              uint32_t len, uint32_t *buf)
+{
   uint32_t crc = 0xffffffff, page = first_page, off = 0;
   for(uint32_t done = 0; done < len; done += FLASH_PAGE) {
     uint32_t n = len - done < FLASH_PAGE ? len - done : FLASH_PAGE;
@@ -390,8 +431,54 @@ ram_install(uint32_t first_page, uint32_t page_size, uint32_t shift,
       page++;
     }
   }
-  if(~crc != crc_expect)
-    goto restart;
+  return ~crc;
+}
+
+static RAMFUNC void __attribute__((noreturn))
+ram_install(uint32_t first_page, uint32_t page_size, uint32_t shift,
+            uint32_t len, uint32_t dest, uint32_t crc_expect)
+{
+  AT91PS_SPI spi = AT91C_BASE_SPI1;
+  volatile fw_report_t *rep = FW_REPORT;
+  uint32_t buf[FLASH_PAGE / 4];
+  uint32_t df_page = first_page, df_off = 0, cpsr;
+
+  // IRQ and FIQ off in the core as well as in the AIC
+  __asm__ volatile("mrs %0, cpsr\n\t"
+                   "orr %0, %0, #0xc0\n\t"
+                   "msr cpsr_c, %0" : "=r"(cpsr));
+  AT91C_BASE_AIC->AIC_IDCR = 0xffffffff;
+  spi->SPI_PTCR = AT91C_PDC_RXTDIS | AT91C_PDC_TXTDIS;
+  spi->SPI_MR = AT91C_SPI_MSTR | AT91C_SPI_MODFDIS | (0xE << 16);  // NPCS0
+  (void)spi->SPI_RDR;
+  DF_CS_PIO->PIO_SODR = DF_CS_PIN;      // high first, then ours
+  DF_CS_PIO->PIO_OER = DF_CS_PIN;
+  DF_CS_PIO->PIO_PER = DF_CS_PIN;
+
+  rep->magic = 0;
+  rep->expect = crc_expect;
+  rep->len = len;
+  rep->crc_fast = rep->crc_slow = rep->crc_flash = 0;
+
+  // 0. read the whole image the way the copy will, before touching the
+  //    flash: at 6 MHz, else at 1 MHz. Neither agreeing, the running
+  //    firmware stays and just restarts.
+  uint32_t scbr = 8;                    // 48 MHz / 8
+  spi->SPI_CSR[0] = (spi->SPI_CSR[0] & ~(AT91C_SPI_SCBR | AT91C_SPI_CSAAT)) |
+                    (scbr << 8);
+  rep->crc_fast = ram_image_crc(first_page, page_size, shift, len, buf);
+  if(rep->crc_fast != crc_expect) {
+    scbr = 48;                          // 1 MHz
+    spi->SPI_CSR[0] = (spi->SPI_CSR[0] & ~AT91C_SPI_SCBR) | (scbr << 8);
+    rep->crc_slow = ram_image_crc(first_page, page_size, shift, len, buf);
+    if(rep->crc_slow != crc_expect) {
+      rep->result = FW_REFUSED;
+      goto restart;
+    }
+  }
+  rep->scbr = scbr;
+  rep->result = FW_STARTED;             // stays so if the copy is cut short
+
   // erase before programming, FMCN for 1.5 us as EFC_PerformCommand1 uses
   AT91C_BASE_MC->MC_FMR = (AT91C_BASE_MC->MC_FMR &
                            ~(AT91C_MC_FMCN | AT91C_MC_NEBP)) | (72 << 16);
@@ -408,15 +495,20 @@ ram_install(uint32_t first_page, uint32_t page_size, uint32_t shift,
       df_off -= page_size;
       df_page++;
     }
-    ram_read((df_page << shift) | df_off, buf, len - done);
+    ram_read_twice((df_page << shift) | df_off, buf, len - done);
     ram_program(dest + done, buf);
   }
 
   // 3. the first page: the image is complete
-  ram_read(first_page << shift, buf, len);
+  ram_read_twice(first_page << shift, buf, len);
   ram_program(dest, buf);
 
+  // what the flash now holds
+  rep->crc_flash = ~ram_crc32(0xffffffff, (const uint32_t *)dest, len);
+  rep->result = rep->crc_flash == crc_expect ? FW_INSTALLED : FW_BAD_FLASH;
+
 restart:
+  rep->magic = FW_REPORT_MAGIC;
   AT91C_BASE_RSTC->RSTC_RCR = (0xA5u << 24) | AT91C_RSTC_PROCRST |
                               AT91C_RSTC_PERRST | AT91C_RSTC_EXTRST;
   for(;;)

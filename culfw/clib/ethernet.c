@@ -19,6 +19,9 @@
 #ifdef HAS_HOSTNAME
 #include "hostname.h"
 #endif
+#ifdef HAS_FW_UPDATE
+#include "fwupdate.h"
+#endif
 #include "led.h"
 #include "mdns_sd.h"
 #include "ntp.h"
@@ -59,6 +62,9 @@ ethernet_init(void)
   my_delay_ms( 200 );
 #endif
 
+#ifdef HAS_FW_UPDATE
+  fwupdate_boot();                    // the last install's report, early
+#endif
   network_init();
   mac.addr[0] = erb(EE_MAC_ADDR+0);
   mac.addr[1] = erb(EE_MAC_ADDR+1);

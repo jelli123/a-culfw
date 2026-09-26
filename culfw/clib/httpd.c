@@ -565,8 +565,37 @@ out_update(void)
       "the same place and detect the radio modules at start"
 #endif
       ". Should an update be cut short, the device starts in the "
-      "bootloader's USB drive by itself.</p>"
-      "<form id=\"uf\"><input type=\"file\" id=\"ff\" accept=\".bin\">"
+      "bootloader's USB drive by itself.</p>");
+  uint32_t mhz, expect, fast, slow, flash_crc;
+  uint8_t last = fwupdate_last(&mhz, &expect, &fast, &slow, &flash_crc);
+  if(last != FW_NONE) {
+    out(last == FW_INSTALLED ? "<p>" : "<p class=\"e\">");
+    out("Last install, before this start: ");
+    if(last == FW_INSTALLED) {
+      out("installed, read at ");
+      out_u(mhz);
+      out(" MHz.");
+    } else if(last == FW_REFUSED) {
+      out("refused, nothing was written. The staged image read back as "
+          "CRC32 ");
+      out_hex32(fast);
+      out(" at 6 MHz and ");
+      out_hex32(slow);
+      out(" at 1 MHz instead of ");
+      out_hex32(expect);
+      out(".");
+    } else if(last == FW_STARTED) {
+      out("cut short while copying.");
+    } else {
+      out("copied, but the flash reads back as CRC32 ");
+      out_hex32(flash_crc);
+      out(" instead of ");
+      out_hex32(expect);
+      out(".");
+    }
+    out("</p>");
+  }
+  out("<form id=\"uf\"><input type=\"file\" id=\"ff\" accept=\".bin\">"
       "<button>Upload and check</button></form>"
       "<progress id=\"up\" max=\"1\" value=\"0\" hidden></progress>"
       "<p id=\"us\"></p>"

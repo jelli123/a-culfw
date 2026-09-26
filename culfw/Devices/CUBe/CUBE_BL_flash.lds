@@ -108,6 +108,9 @@ SECTIONS
         _ezero = .;
     } >sram
     _bss_end = . ;
+    /* clib/fwupdate.c keeps the install report at 0x20C000 across the
+       restart: static RAM has to end below it */
+    ASSERT(_bss_end <= 0x20C000, "static RAM reaches the install report")
     
     _sstack = 0x210000;
 
