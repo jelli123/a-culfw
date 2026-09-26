@@ -31,6 +31,7 @@ void fwupdate_install(void) __attribute__((noreturn));
 #define FW_REFUSED    2               // misread at 6 and 1 MHz: nothing written
 #define FW_STARTED    3               // cut short while copying
 #define FW_BAD_FLASH  4               // copied, but the flash CRC differs
+#define FW_READING    5               // stopped while reading the staged image
 void fwupdate_boot(void);             // once, early at start
 uint8_t fwupdate_last(uint32_t *mhz, uint32_t *expect, uint32_t *fast,
                       uint32_t *slow, uint32_t *flash_crc);

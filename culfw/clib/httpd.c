@@ -586,6 +586,9 @@ out_update(void)
       out(".");
     } else if(last == FW_STARTED) {
       out("cut short while copying.");
+    } else if(last == FW_READING) {
+      out("stopped while reading the staged image, nothing was written - "
+          "the watchdog restarted the device.");
     } else {
       out("copied, but the flash reads back as CRC32 ");
       out_hex32(flash_crc);

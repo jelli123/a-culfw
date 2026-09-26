@@ -448,17 +448,26 @@ ram_install(uint32_t first_page, uint32_t page_size, uint32_t shift,
                    "orr %0, %0, #0xc0\n\t"
                    "msr cpsr_c, %0" : "=r"(cpsr));
   AT91C_BASE_AIC->AIC_IDCR = 0xffffffff;
+
+  rep->result = FW_READING;             // a hang from here: this is seen
+  rep->expect = crc_expect;
+  rep->len = len;
+  rep->scbr = 0;
+  rep->crc_fast = rep->crc_slow = rep->crc_flash = 0;
+  rep->magic = FW_REPORT_MAGIC;
+
+  /* The at91lib driver switches SPI1's clock off after every transfer
+     (SPID_Handler: PMC_PCDR). Without it nothing is shifted, RDRF never
+     comes, and ram_spi() waited until the watchdog restarted the old
+     firmware - the update "ran through" and changed nothing. */
+  AT91C_BASE_PMC->PMC_PCER = 1 << AT91C_ID_SPI1;
+  spi->SPI_CR = AT91C_SPI_SPIEN;
   spi->SPI_PTCR = AT91C_PDC_RXTDIS | AT91C_PDC_TXTDIS;
   spi->SPI_MR = AT91C_SPI_MSTR | AT91C_SPI_MODFDIS | (0xE << 16);  // NPCS0
   (void)spi->SPI_RDR;
   DF_CS_PIO->PIO_SODR = DF_CS_PIN;      // high first, then ours
   DF_CS_PIO->PIO_OER = DF_CS_PIN;
   DF_CS_PIO->PIO_PER = DF_CS_PIN;
-
-  rep->magic = 0;
-  rep->expect = crc_expect;
-  rep->len = len;
-  rep->crc_fast = rep->crc_slow = rep->crc_flash = 0;
 
   // 0. read the whole image the way the copy will, before touching the
   //    flash: at 6 MHz, else at 1 MHz. Neither agreeing, the running
