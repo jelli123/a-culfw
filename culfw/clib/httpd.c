@@ -1338,9 +1338,9 @@ handle_duty(const char *body)
     return;
   }
   credit_suspend_s = m * 60;
-  if(m)                               // nothing is taken while suspended:
+  if(m)                               // nothing is taken while suspended;
     for(uint8_t r = 0; r < CREDIT_RADIOS; r++)
-      credit_radio[r] = MAX_CREDIT;   // keep FHEM from waiting on it
+      credit_radio[r] = MAX_CREDIT;   // start full, as X then reports it
   page_redirect();
 }
 #endif
