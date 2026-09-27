@@ -497,9 +497,18 @@ out_duty(void)
   out_fixed(credit_10ms, 2);
   out(" s of ");
   out_fixed(MAX_CREDIT, 2);
-  out(" s air time. It refills by 10 ms per second, i.e. 1 % of the time, "
-      "and is shared by all modules. SlowRF, MAX! and Maico transmissions "
-      "draw on it; the firmware does not limit the other modes.</p>");
+  out(" s air time");
+  if(credit_debt) {
+    out(", and ");
+    out_fixed(credit_debt, 2);
+    out(" s owed: nothing is sent until that is paid back");
+  }
+  out(". It refills by 10 ms per second, i.e. 1 % of the time, and is "
+      "shared by all modules and modes. Transmissions in the 0.1 % band "
+      "(868.7-869.2 MHz, e.g. Wireless M-Bus T) count ten times, those in "
+      "the 10 % bands (433.05-434.79 and 869.4-869.65 MHz, e.g. Somfy, "
+      "Intertechno) a tenth; everything else counts as 1 %. A transmission "
+      "longer than what is left is sent, and the rest is owed.</p>");
 
   if(credit_suspend_s) {
     out("<p class=\"e\">The limit is suspended for another ");

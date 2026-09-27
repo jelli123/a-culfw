@@ -13,6 +13,7 @@
 #include "delay.h"                      // for my_delay_ms, my_delay_us
 #include "display.h"                    // for DC, DH2, DNL, DS_P
 #include "rf_asksin.h"
+#include "rf_send.h"                    // for credit_ok, credit_air
 #include "rf_receive.h"                 // for set_txrestore, REP_BINTIME, etc
 #include "rf_mode.h"
 #include "multi_CC.h"
@@ -278,6 +279,11 @@ asksin_send(char *in)
 //  DS_P(PSTR("LENERR\r\n"));
     return;
   }
+  if (!credit_ok()) {           // duty cycle budget used up
+    MULTICC_PREFIX();
+    DS_P(PSTR("LOVF\r\n"));
+    return;
+  }
 
 #ifdef USE_RF_MODE
   change_RF_mode(RF_mode_asksin);
@@ -298,6 +304,8 @@ asksin_send(char *in)
     msg[l] = (msg[l-1] + 0xdc) ^ msg[l];
   
   msg[l] = msg[l] ^ ctl;
+
+  uint32_t t_air = ticks;
 
   // enable TX, wait for CCA
   get_timestamp(&ts1);
@@ -335,6 +343,7 @@ asksin_send(char *in)
   // wait for TX to finish
   while(cc1100_readReg( CC1100_MARCSTATE ) == MARCSTATE_TX)
     ;
+  credit_air(t_air);            // still on the AskSin frequency
 
 out:
   if (cc1100_readReg( CC1100_MARCSTATE ) == MARCSTATE_TXFIFO_UNDERFLOW) {

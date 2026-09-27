@@ -228,7 +228,9 @@ Minute_Task(void)
     LED_TOGGLE();
 #endif
 
-  if (credit_10ms < MAX_CREDIT) // 10ms/1s == 1% -> allowed talk-time without CD
+  if (credit_debt)              // air time past the budget is paid back first
+    credit_debt--;
+  else if (credit_10ms < MAX_CREDIT) // 10ms/1s == 1% -> allowed talk-time without CD
     credit_10ms += 1;
   if (credit_suspend_s)         // a debug suspension of the limit runs out
     credit_suspend_s--;

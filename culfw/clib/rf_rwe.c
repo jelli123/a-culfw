@@ -15,6 +15,8 @@
 #include "rf_rwe.h"
 #include "rf_mode.h"
 #include "multi_CC.h"
+#include "clock.h"                      // for ticks
+#include "rf_send.h"                    // for credit_ok, credit_air
 
 #ifdef USE_HAL
 #include "hal.h"
@@ -181,6 +183,12 @@ rwe_send(char *in)
 //    DS_P(PSTR("LENERR\r\n"));
     return;
   }
+  if (!credit_ok()) {           // duty cycle budget used up
+    MULTICC_PREFIX();
+    DS_P(PSTR("LOVF\r\n"));
+    return;
+  }
+  uint32_t t_air = ticks;       // 500 ms of preamble follow
 
 #ifdef USE_RF_MODE
   change_RF_mode(RF_mode_rwe);
@@ -231,7 +239,8 @@ rwe_send(char *in)
 
   while( cc1100_readReg( CC1100_MARCSTATE ) != 1 )
     my_delay_ms(5);
-  
+  credit_air(t_air);
+
   ccStrobe(CC1100_SIDLE);
 #ifdef USE_RF_MODE
   if(!restore_RF_mode()) {

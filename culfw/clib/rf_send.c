@@ -17,6 +17,7 @@
 #include "led.h"                        // for LED_OFF, LED_ON
 #include "rf_receive.h"                 // for cksum1, cksum2, cksum3, etc
 #include "rf_send.h"
+#include "clock.h"                      // for ticks
 #include "stringfunc.h"                 // for fromhex
 #include "rf_mode.h"
 #include "i2cslave.h"										// for TWCR_INIT, TWCR_OFF
@@ -70,6 +71,57 @@ credit_take(uint16_t sum)
     return 0;
   credit_10ms -= sum;
   return 1;
+}
+
+/* Air time past the budget: a transmission measured afterwards may be
+   longer than what was left. It is paid back before the budget refills
+   (clock.c), so over time the limit holds. */
+uint16_t credit_debt;
+
+/* May a transmission whose length is known only afterwards start? */
+uint8_t
+credit_ok(void)
+{
+  return credit_suspend_s || (!credit_debt && credit_10ms);
+}
+
+/* The share of the band's permitted duty cycle one 10 ms unit uses, in
+   1 % units x 10 (EU, ERC Recommendation 70-03, annex 1), from the
+   frequency the chip is set to. Bands not listed count as 1 %. */
+static uint8_t
+duty_weight(void)
+{
+  uint32_t f = (uint32_t)cc1100_readReg(CC1100_FREQ2) << 16 |
+               (uint32_t)cc1100_readReg(CC1100_FREQ1) << 8 |
+               cc1100_readReg(CC1100_FREQ0);
+  // f * 26 MHz / 2^16, in 32 bits: within 25 kHz, enough to tell bands
+  uint32_t khz = ((f >> 6) * 26000) >> 10;
+
+  if(khz >= 868700 && khz <= 869200)
+    return 100;                         // 0.1 %
+  if((khz >= 433050 && khz <= 434790) || (khz >= 869400 && khz <= 869650))
+    return 1;                           // 10 %
+  return 10;                            // 1 %: 868.0-868.6 and the rest
+}
+
+/* Charges the air time since t0 (ticks, 1/125 s), weighted by the band;
+   what the budget does not cover becomes debt. */
+void
+credit_air(uint32_t t0)
+{
+  if(credit_suspend_s)
+    return;
+  uint32_t units = ((ticks - t0) * 8 + 9) / 10;            // 10 ms units
+  if(!units)
+    units = 1;
+  units = (units * duty_weight() + 9) / 10;
+  if(units <= credit_10ms) {
+    credit_10ms -= units;
+  } else {
+    units -= credit_10ms;
+    credit_10ms = 0;
+    credit_debt = units > 0xffff - credit_debt ? 0xffff : credit_debt + units;
+  }
 }
 
 #define TMUL(x) (x<<4)

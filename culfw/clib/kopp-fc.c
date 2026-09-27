@@ -78,6 +78,7 @@
 #include "fband.h"                      // for checkFrequency
 #include "fncollection.h"               // for EE_CC1100_CFG_SIZE, erb, etc
 #include "kopp-fc.h"
+#include "rf_send.h"                    // for credit_ok, credit_air
 #include "rf_mode.h"
 
 #ifdef USE_HAL
@@ -263,6 +264,11 @@ kopp_fc_init(void)
 void TransmittKoppBlk(uint8_t sendmsg01[15], uint8_t blkTXcode_i)
 
 {
+   if (!credit_ok()) {                                             // duty cycle budget used up
+     DS_P(PSTR("LOVF\r\n"));
+     return;
+   }
+   uint32_t t_air = ticks;                                         // 13 blocks follow
 
 // Read Blockcounter from Config File Datei (RAMDISK) 
 // --------------------------------------------------
@@ -349,6 +355,7 @@ do {
  } while(count2 <= 13);        	                                // send same message 13x 
 
 
+credit_air(t_air);
 blkctr++;  												   			// increase Blockcounter
 
 }

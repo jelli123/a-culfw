@@ -27,6 +27,8 @@
 #include "stringfunc.h"                 // for fromhex
 #include "rf_mode.h"
 #include "multi_CC.h"
+#include "clock.h"                      // for ticks
+#include "rf_send.h"                    // for credit_ok, credit_air
 
 #ifdef USE_HAL
 #include "hal.h"
@@ -448,6 +450,7 @@ uint16 txSendPacket(uint8* pPacket, uint8* pBytes, uint8 mode) {
     TXinfo.complete = TRUE; 
   
   // Strobe TX
+  uint32_t t_air = ticks;
   ccStrobe(CC1100_STX);
     
   // Critical code section
@@ -486,6 +489,7 @@ uint16 txSendPacket(uint8* pPacket, uint8* pBytes, uint8 mode) {
       txStatus = halRfGetTxStatus();
       if ( (txStatus & CC1100_STATUS_STATE_BM) == CC1100_STATE_TX_UNDERFLOW ) {
 	ccStrobe(CC1100_SFTX);
+	credit_air(t_air);              // it did send up to here
 	return TX_STATE_ERROR;
       }
       
@@ -494,6 +498,7 @@ uint16 txSendPacket(uint8* pPacket, uint8* pBytes, uint8 mode) {
   }
 
   while((cc1100_readReg( CC1100_MARCSTATE ) != MARCSTATE_IDLE));
+  credit_air(t_air);
 
   // re-enable RX if ...
   if (lastMode != WMBUS_NONE)
@@ -565,10 +570,13 @@ void rf_mbus_func(char *in) {
     DNL();
     */
    
-    if(in[2] == 's') {
+    if(!credit_ok()) {          // duty cycle budget used up
+      MULTICC_PREFIX();
+      DS_P(PSTR("LOVF\r\n"));
+    } else if(in[2] == 's') {
       txSendPacket(MBpacket, MBbytes, WMBUS_SMODE);
     } else if(in[2] == 't') {
-      txSendPacket(MBpacket, MBbytes, WMBUS_TMODE);
+      txSendPacket(MBpacket, MBbytes, WMBUS_TMODE);   // 868.95 MHz: 0.1 %
     }
     
 #else

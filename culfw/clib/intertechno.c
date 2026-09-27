@@ -28,6 +28,8 @@
 #include "rf_receive.h"                 // for set_txrestore, tx_report
 #include "rf_mode.h"
 #include "multi_CC.h"
+#include "clock.h"                      // for ticks
+#include "rf_send.h"                    // for credit_ok, credit_air
 
 #ifndef USE_RF_MODE
 #ifdef HAS_ASKSIN
@@ -312,6 +314,13 @@ it_send (char *in, uint8_t datatype) {
     //}
 	  uint8_t i, j;//, k;
 
+		if (!credit_ok()) {         // duty cycle budget used up
+			MULTICC_PREFIX();
+			DS_P(PSTR("LOVF\r\n"));
+			return;
+		}
+		uint32_t t_air = ticks;
+
 		LED_ON();
 
     #if defined (HAS_IRRX) || defined (HAS_IRTX) //Blockout IR_Reception for the moment
@@ -427,6 +436,7 @@ it_send (char *in, uint8_t datatype) {
       //  send_IT_sync_V3();
       //}
 		} //Do it n Times
+		credit_air(t_air);          // 433.92 MHz: the 10 % band; 868 MHz: 1 %
 #ifdef USE_RF_MODE
     if(!restore_RF_mode()) {
       // enable RX again

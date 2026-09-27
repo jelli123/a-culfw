@@ -49,6 +49,8 @@
 #include "somfy_rts.h"
 #include "rf_mode.h"
 #include "multi_CC.h"
+#include "clock.h"                      // for ticks
+#include "rf_send.h"                    // for credit_ok, credit_air
 
 #ifndef USE_RF_MODE
 
@@ -228,6 +230,12 @@ static uint8_t somfy_rts_calc_checksum(somfy_rts_frame_t *frame) {
 static void somfy_rts_send(char *in) {
 	uint8_t i, j;
 
+	if (!credit_ok()) {           // duty cycle budget used up
+		MULTICC_PREFIX();
+		DS_P(PSTR("LOVF\r\n"));
+		return;
+	}
+
 	// input is in format: Ys_key_ctrl_cks_rollcode_a0_a1_a2
 	// Ys ad 20 0ae3 a2 98 42
 
@@ -303,6 +311,7 @@ static void somfy_rts_send(char *in) {
 	ccStrobe(CC1100_SFTX);
 
 	// enable TX
+	uint32_t t_air = ticks;
 	ccTX();
 
 	// send wakeup pulse
@@ -316,6 +325,7 @@ static void somfy_rts_send(char *in) {
 	for(i = 0; i < somfy_rts_repetition; i++) {
 		send_somfy_rts_frame(airdata, (i == 0) ? 2 : 7); // send 2 hw Sync pulses at first, and 7 for repeated frames
 	}
+	credit_air(t_air);            // 433.42 MHz: the 10 % band
 
 #ifdef USE_RF_MODE
 	if(!restore_RF_mode()) {

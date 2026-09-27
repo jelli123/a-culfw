@@ -175,8 +175,14 @@ from a page on another host is refused.
 The page lists every radio module found (the CUBEx4 detects them at start)
 with its band, the frequency and state read from the chip, and its mode.
 Below it is the duty cycle budget: the air time left under the 1 % rule, shared
-by all modules. SlowRF (FS20, FHT, ...), MAX! and Maico transmissions draw on
-it; the firmware does not limit the other modes.
+by all modules and modes. Every transmitting mode draws on it - SlowRF (FS20,
+FHT, ...), MAX!, Maico, AskSin (HomeMatic), Z-Wave, RWE, Wireless M-Bus, Somfy
+RTS, Intertechno, Kopp and FastRF. Modes whose air time is known only
+afterwards are timed and weighted by the band the radio is set to (ERC
+Recommendation 70-03): 868.7-869.2 MHz (0.1 %, e.g. Wireless M-Bus T) counts ten
+times, 433.05-434.79 and 869.4-869.65 MHz (10 %) a tenth, everything else as
+1 %. A transmission longer than what is left still goes out; the rest is owed
+and paid back before anything else is sent, so the limit holds over time.
 
 For debugging, the limit can be suspended for 1-60 minutes (5 by default),
 after confirming that the radio regulations that apply will be observed. Many

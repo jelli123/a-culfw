@@ -20,6 +20,11 @@ void addParityAndSendData(uint8_t *hb, uint8_t hblen,
 extern uint16_t credit_10ms;
 extern uint16_t credit_suspend_s;     // > 0: limit suspended, seconds left
 uint8_t credit_take(uint16_t sum);
+/* For transmissions whose length is known only afterwards: check before,
+   charge after (air time weighted by band, the excess as debt). */
+extern uint16_t credit_debt;
+uint8_t credit_ok(void);
+void credit_air(uint32_t t0);
 #ifndef MAX_CREDIT
 #define MAX_CREDIT 900       // max 9 seconds burst / 25% of the hourly budget
 #endif

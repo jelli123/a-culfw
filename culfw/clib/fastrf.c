@@ -12,6 +12,8 @@
 #include "fncollection.h"               // for EE_FASTRF_CFG
 #include "rf_mode.h"
 #include "multi_CC.h"
+#include "rf_send.h"                    // for credit_ok, credit_air
+#include <avr/pgmspace.h>               // for PSTR
 
 uint8_t fastrf_on;
 
@@ -31,6 +33,12 @@ fastrf_func(char *in)
 
   } else if(in[1] == 's') {         // Send
 
+    if(!credit_ok()) {              // duty cycle budget used up
+      MULTICC_PREFIX();
+      DS_P(PSTR("LOVF\r\n"));
+      return;
+    }
+    uint32_t t_air = ticks;
     CC1100_ASSERT;
     cc1100_sendbyte(CC1100_WRITE_BURST | CC1100_TXFIFO);
     cc1100_sendbyte( len-2 );
@@ -40,6 +48,7 @@ fastrf_func(char *in)
     ccTX();
     while(cc1100_readReg(CC1100_TXBYTES) & 0x7f) // Wait for the data to be sent
       my_delay_ms(1);
+    credit_air(t_air);
     ccRX();                         // set reception again. MCSM1 does not work.
 
   } else {

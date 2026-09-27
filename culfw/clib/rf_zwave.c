@@ -14,6 +14,7 @@
 #include "rf_zwave.h"
 #include "rf_mode.h"
 #include "multi_CC.h"
+#include "rf_send.h"                    // for credit_ok, credit_air
 
 #ifdef USE_HAL
 #include "hal.h"
@@ -370,6 +371,12 @@ rf_zwave_task(void)
 void
 zwave_doSend(uint8_t *msg, uint8_t hblen)
 {
+  if(!credit_ok()) {            // duty cycle budget used up; acks too
+    MULTICC_PREFIX();
+    DS_P(PSTR("LOVF\r\n"));
+    return;
+  }
+  uint32_t t_air = ticks;
   LED_ON();
 
   if (zwave_drate[CC_INSTANCE] == DRATE_9600) {
@@ -417,6 +424,7 @@ zwave_doSend(uint8_t *msg, uint8_t hblen)
 
   while(cc1100_readReg( CC1100_MARCSTATE ) == MARCSTATE_TX)
     ;
+  credit_air(t_air);
   cc1100_writeReg(CC1100_PKTLEN, 0xff);
   if(zwave_drate[CC_INSTANCE] == DRATE_9600) {
     cc1100_writeReg(CC1100_MDMCFG2, 0x1e);
