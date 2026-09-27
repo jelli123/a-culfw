@@ -460,7 +460,8 @@ static void
 out_radios(void)
 {
   out("<h2>Radio modules</h2><table><tr><th>#</th><th>Band</th>"
-      "<th>Frequency</th><th>Mode</th><th>State</th></tr>");
+      "<th>Frequency</th><th>Mode</th><th>State</th>"
+      "<th>Duty cycle budget</th></tr>");
   uint8_t old = CC1101.instance;
   for(uint8_t i = 0; i < RADIO_COUNT; i++) {
     if(!radio_present(i))
@@ -484,6 +485,16 @@ out_radios(void)
     out(mode < sizeof(mode_name) / sizeof(*mode_name) ? mode_name[mode] : "?");
     out("</td><td>");
     out(mode == RF_mode_off ? "off" : marc_state(state));
+    out("</td><td>");
+    out_fixed(credit_radio[i], 2);
+    out(" of ");
+    out_fixed(MAX_CREDIT, 2);
+    out(" s");
+    if(debt_radio[i]) {
+      out(", ");
+      out_fixed(debt_radio[i], 2);
+      out(" s owed");
+    }
     out("</td></tr>");
   }
   out("</table>");
@@ -493,18 +504,11 @@ out_radios(void)
 static void
 out_duty(void)
 {
-  out("<h2>Duty cycle (1 % rule)</h2><p>Budget: ");
-  out_fixed(credit_10ms, 2);
-  out(" s of ");
-  out_fixed(MAX_CREDIT, 2);
-  out(" s air time");
-  if(credit_debt) {
-    out(", and ");
-    out_fixed(credit_debt, 2);
-    out(" s owed: nothing is sent until that is paid back");
-  }
-  out(". It refills by 10 ms per second, i.e. 1 % of the time, and is "
-      "shared by all modules and modes. Transmissions in the 0.1 % band "
+  out("<h2>Duty cycle (1 % rule)</h2><p>Each radio module has its own "
+      "budget of air time, in the table above, shared by all modes it "
+      "transmits in. It refills by 10 ms per second, i.e. 1 % of the time; "
+      "while a module owes air time, it sends nothing until that is paid "
+      "back. Transmissions in the 0.1 % band "
       "(868.7-869.2 MHz, e.g. Wireless M-Bus T) count ten times, those in "
       "the 10 % bands (433.05-434.79 and 869.4-869.65 MHz, e.g. Somfy, "
       "Intertechno) a tenth; everything else counts as 1 %. A transmission "
@@ -1335,7 +1339,8 @@ handle_duty(const char *body)
   }
   credit_suspend_s = m * 60;
   if(m)                               // nothing is taken while suspended:
-    credit_10ms = MAX_CREDIT;         // keep FHEM from waiting on it
+    for(uint8_t r = 0; r < CREDIT_RADIOS; r++)
+      credit_radio[r] = MAX_CREDIT;   // keep FHEM from waiting on it
   page_redirect();
 }
 #endif

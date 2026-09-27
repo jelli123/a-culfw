@@ -55,7 +55,7 @@
 #define HRM_EXTRA_SYNC_L   600 //us  measured with CUL raw read output
 #endif
 
-uint16_t credit_10ms;
+uint16_t credit_radio[CREDIT_RADIOS];
 uint16_t credit_suspend_s;
 
 /* Takes sum 10 ms units of air time from the duty cycle budget; 0 means
@@ -76,7 +76,7 @@ credit_take(uint16_t sum)
 /* Air time past the budget: a transmission measured afterwards may be
    longer than what was left. It is paid back before the budget refills
    (clock.c), so over time the limit holds. */
-uint16_t credit_debt;
+uint16_t debt_radio[CREDIT_RADIOS];
 
 /* May a transmission whose length is known only afterwards start? */
 uint8_t

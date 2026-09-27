@@ -174,8 +174,9 @@ from a page on another host is refused.
 
 The page lists every radio module found (the CUBEx4 detects them at start)
 with its band, the frequency and state read from the chip, and its mode.
-Below it is the duty cycle budget: the air time left under the 1 % rule, shared
-by all modules and modes. Every transmitting mode draws on it - SlowRF (FS20,
+The table also shows each module's duty cycle budget: the air time left under
+the 1 % rule. Every radio module has its own - on the CUBEx4 they are separate
+transmitters - shared by all modes it transmits in. Every transmitting mode draws on it - SlowRF (FS20,
 FHT, ...), MAX!, Maico, AskSin (HomeMatic), Z-Wave, RWE, Wireless M-Bus, Somfy
 RTS, Intertechno, Kopp and FastRF. Modes whose air time is known only
 afterwards are timed and weighted by the band the radio is set to (ERC
