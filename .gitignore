@@ -57,3 +57,5 @@ culfw/.pio/
 
 # Objektverzeichnis je Geraet (seit 2026-08-23)
 culfw/Devices/*/build/
+
+.claude
